@@ -8,7 +8,8 @@ export interface User {
     email: string;
     name: string;
     phone?: string;
-    unit?: string;
+    unit?: string;     // Keeping for backward compatibility or display name
+    unit_id?: string;  // [NEW] UUID link
     building_id?: string;
     building?: Building;
     building_name?: string;
@@ -42,6 +43,7 @@ export interface Payment {
     proof_url?: string;  // Full URL from backend
     status: PaymentStatus;
     notes?: string;      // Rejection reason or notes
+    unit_id?: string;    // [NEW] UUID link
     created_at: string;
     updated_at: string;
 }
@@ -82,6 +84,7 @@ export interface UpdateUserDto {
     name?: string;
     phone?: string;
     unit?: string;
+    unit_id?: string; // [NEW]
     building_id?: string;
     role?: UserRole;
     status?: UserStatus;
@@ -94,6 +97,7 @@ export interface CreateUserDto {
     role: UserRole;
     building_id: string;
     unit?: string;
+    unit_id?: string; // [NEW]
     phone?: string;
 }
 

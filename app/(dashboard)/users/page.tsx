@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { usersService } from '@/lib/services/users.service';
 import { buildingsService } from '@/lib/services/buildings.service';
+import { unitsService } from '@/lib/services/units.service'; // Added
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,12 +27,13 @@ import { toast } from 'sonner';
 import { MoreHorizontal, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import { UserDialog } from '@/components/users/UserDialog';
 import { formatUserRole } from '@/lib/utils/format';
-import type { User, Building } from '@/types/models';
+import type { User, Building, Unit } from '@/types/models';
 
 export default function UsersPage() {
     const { isSuperAdmin, user: currentUser } = usePermissions();
     const [users, setUsers] = useState<User[]>([]);
     const [buildings, setBuildings] = useState<Building[]>([]);
+    const [units, setUnits] = useState<Unit[]>([]); // Added units state
     const [isLoading, setIsLoading] = useState(true);
 
     // Filters
@@ -47,21 +49,37 @@ export default function UsersPage() {
         try {
             setIsLoading(true);
 
+            // Determine active building ID for fetching units
+            let activeBuildingId = null;
+            if (filterBuildingId && filterBuildingId !== 'all') {
+                activeBuildingId = filterBuildingId;
+            } else if (!isSuperAdmin && currentUser?.building_id) {
+                activeBuildingId = currentUser.building_id;
+            }
+
             // Build query params
             const query: Record<string, string> = {};
-            if (filterBuildingId && filterBuildingId !== 'all') query.building_id = filterBuildingId;
-            else if (!isSuperAdmin && currentUser?.building_id) query.building_id = currentUser.building_id;
+            if (activeBuildingId) query.building_id = activeBuildingId;
 
             if (filterRole && filterRole !== 'all') query.role = filterRole;
             if (filterStatus && filterStatus !== 'all') query.status = filterStatus;
 
-            const [usersData, buildingsData] = await Promise.all([
+            const promises: Promise<any>[] = [
                 usersService.getUsers(query),
                 isSuperAdmin ? buildingsService.getBuildings() : Promise.resolve([])
-            ]);
+            ];
+
+            if (activeBuildingId) {
+                promises.push(unitsService.getUnits(activeBuildingId));
+            } else {
+                promises.push(Promise.resolve([]));
+            }
+
+            const [usersData, buildingsData, unitsData] = await Promise.all(promises);
 
             setUsers(usersData);
             setBuildings(buildingsData);
+            setUnits(unitsData);
         } catch (error) {
             console.error('Failed to fetch data:', error);
             toast.error('Failed to fetch data');
@@ -105,6 +123,14 @@ export default function UsersPage() {
             console.error(error);
             toast.error(`Failed to update user status`);
         }
+    };
+
+    const getUnitName = (user: User) => {
+        if (user.unit_id && units.length > 0) {
+            const unit = units.find(u => u.id === user.unit_id);
+            if (unit) return unit.name;
+        }
+        return user.unit; // Fallback to string
     };
 
     return (
@@ -198,66 +224,69 @@ export default function UsersPage() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    users.map((user) => (
-                                        <tr key={user.id} className="hover:bg-accent/50 transition-colors">
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm font-medium text-foreground">{user.name}</div>
-                                                <div className="text-sm text-muted-foreground">{user.email}</div>
-                                                {user.unit && <div className="text-xs text-muted-foreground">Unit: {user.unit}</div>}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <Badge variant="outline">{formatUserRole(user.role)}</Badge>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                                                {user.building?.name || user.building_name || 'N/A'}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <Badge variant={
-                                                    user.status === 'active' ? 'default' :
-                                                        user.status === 'pending' ? 'secondary' :
-                                                            'destructive'
-                                                }>
-                                                    {user.status || 'active'}
-                                                </Badge>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" className="h-8 w-8 p-0">
-                                                            <span className="sr-only">Open menu</span>
-                                                            <MoreHorizontal className="h-4 w-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
-                                                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                        <DropdownMenuItem onClick={() => handleEdit(user)}>
-                                                            <Edit className="mr-2 h-4 w-4" /> Edit Details
-                                                        </DropdownMenuItem>
-                                                        {user.status === 'pending' && (
-                                                            <>
-                                                                <DropdownMenuSeparator />
-                                                                <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'active')} className="text-green-600">
-                                                                    <CheckCircle className="mr-2 h-4 w-4" /> Approve
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'rejected')} className="text-red-600">
-                                                                    <XCircle className="mr-2 h-4 w-4" /> Reject
-                                                                </DropdownMenuItem>
-                                                            </>
-                                                        )}
-                                                        {user.status !== 'pending' && user.status !== 'rejected' && (
-                                                            <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'rejected')} className="text-red-600">
-                                                                <XCircle className="mr-2 h-4 w-4" /> Deactivate/Reject
+                                    users.map((user) => {
+                                        const unitName = getUnitName(user);
+                                        return (
+                                            <tr key={user.id} className="hover:bg-accent/50 transition-colors">
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="text-sm font-medium text-foreground">{user.name}</div>
+                                                    <div className="text-sm text-muted-foreground">{user.email}</div>
+                                                    {unitName && <div className="text-xs text-muted-foreground">Unit: {unitName}</div>}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <Badge variant="outline">{formatUserRole(user.role)}</Badge>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                                                    {user.building?.name || user.building_name || 'N/A'}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <Badge variant={
+                                                        user.status === 'active' ? 'default' :
+                                                            user.status === 'pending' ? 'secondary' :
+                                                                'destructive'
+                                                    }>
+                                                        {user.status || 'active'}
+                                                    </Badge>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                                                <span className="sr-only">Open menu</span>
+                                                                <MoreHorizontal className="h-4 w-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                                            <DropdownMenuItem onClick={() => handleEdit(user)}>
+                                                                <Edit className="mr-2 h-4 w-4" /> Edit Details
                                                             </DropdownMenuItem>
-                                                        )}
-                                                        <DropdownMenuSeparator />
-                                                        <DropdownMenuItem onClick={() => handleDelete(user.id)} className="text-red-600">
-                                                            <Trash2 className="mr-2 h-4 w-4" /> Delete User
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </td>
-                                        </tr>
-                                    ))
+                                                            {user.status === 'pending' && (
+                                                                <>
+                                                                    <DropdownMenuSeparator />
+                                                                    <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'active')} className="text-green-600">
+                                                                        <CheckCircle className="mr-2 h-4 w-4" /> Approve
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'rejected')} className="text-red-600">
+                                                                        <XCircle className="mr-2 h-4 w-4" /> Reject
+                                                                    </DropdownMenuItem>
+                                                                </>
+                                                            )}
+                                                            {user.status !== 'pending' && user.status !== 'rejected' && (
+                                                                <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'rejected')} className="text-red-600">
+                                                                    <XCircle className="mr-2 h-4 w-4" /> Deactivate/Reject
+                                                                </DropdownMenuItem>
+                                                            )}
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem onClick={() => handleDelete(user.id)} className="text-red-600">
+                                                                <Trash2 className="mr-2 h-4 w-4" /> Delete User
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })
                                 )}
                             </tbody>
                         </table>

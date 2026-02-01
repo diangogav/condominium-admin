@@ -31,29 +31,20 @@ export function UnitDetailsSheet({ unit, open, onOpenChange }: UnitDetailsSheetP
         try {
             setIsLoading(true);
 
-            // 1. Fetch residents for this unit
-            // Note: This relies on exact string match of 'unit' field. 
-            // In a real app, might want a robust relation, but strict string matching works for now per models.
-            const allUsers = await usersService.getUsers({ building_id: unit.building_id });
-            // Filter client-side if API doesn't support strict unit filtering yet, or use specific API if available.
-            // usersService.getUsers supports query params. Let's assume we filter client side for better accuracy with "1-A" vs "1-A " etc if needed,
-            // or better yet, if backend supports it.
-            // Let's filter client side to be safe for now, as API might be broad.
-            const unitResidents = allUsers.filter(u => u.unit === unit.name);
+            // 1. Fetch residents for this specific unit using unit_id
+            const unitResidents = await usersService.getUsers({
+                building_id: unit.building_id,
+                unit_id: unit.id
+            });
             setResidents(unitResidents);
 
-            // 2. Fetch payments for these residents
-            if (unitResidents.length > 0) {
-                const residentIds = unitResidents.map(u => u.id);
-                // We need to fetch payments for ALL these users. 
-                // paymentsService doesn't accept array of IDs. We might need to fetch by building and filter, 
-                // or fetch individually. Fetching by building is safer for batch.
-                const allBuildingPayments = await paymentsService.getPayments({ building_id: unit.building_id });
-                const unitPayments = allBuildingPayments.filter(p => residentIds.includes(p.user_id));
-                setPayments(unitPayments);
-            } else {
-                setPayments([]);
-            }
+            // 2. Fetch payments for this unit using unit_id
+            // This is more robust as it catches payments linked to the unit even if ownership changed
+            const unitPayments = await paymentsService.getPayments({
+                building_id: unit.building_id,
+                unit_id: unit.id
+            });
+            setPayments(unitPayments);
 
         } catch (error) {
             console.error("Failed to fetch unit details", error);

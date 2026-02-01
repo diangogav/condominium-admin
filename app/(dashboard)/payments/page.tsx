@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { paymentsService } from '@/lib/services/payments.service';
 import { buildingsService } from '@/lib/services/buildings.service';
+import { unitsService } from '@/lib/services/units.service'; // Added
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import type { Payment, Building } from '@/types/models';
+import type { Payment, Building, Unit } from '@/types/models';
 import { formatCurrency, formatDate, formatPaymentMethod } from '@/lib/utils/format';
 import { toast } from 'sonner';
 import { usePermissions } from '@/lib/hooks/usePermissions';
@@ -36,10 +37,12 @@ export default function PaymentsPage() {
 
     const [payments, setPayments] = useState<Payment[]>([]);
     const [buildings, setBuildings] = useState<Building[]>([]);
+    const [units, setUnits] = useState<Unit[]>([]); // Added
     const [isLoading, setIsLoading] = useState(true);
 
     // Filters
     const [filterBuildingId, setFilterBuildingId] = useState<string>('all');
+    const [filterUnitId, setFilterUnitId] = useState<string>('all'); // Added
     const [filterStatus, setFilterStatus] = useState<string>('all');
     const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString());
     const [filterPeriod, setFilterPeriod] = useState<string>(''); // Optional period filter
@@ -75,26 +78,36 @@ export default function PaymentsPage() {
                 if (filterYear) query.year = filterYear;
             } else {
                 if (buildingId) query.building_id = buildingId;
+                if (filterUnitId && filterUnitId !== 'all') query.unit_id = filterUnitId; // Added unit_id filter
                 if (filterYear) query.year = filterYear;
             }
 
             if (filterStatus && filterStatus !== 'all') query.status = filterStatus;
             if (filterPeriod) query.period = filterPeriod;
 
-            const [paymentsData, buildingsData] = await Promise.all([
+            const promises: Promise<any>[] = [
                 paymentsService.getPayments(query),
                 isSuperAdmin ? buildingsService.getBuildings() : Promise.resolve([])
-            ]);
+            ];
+
+            if (buildingId) {
+                promises.push(unitsService.getUnits(buildingId));
+            } else {
+                promises.push(Promise.resolve([]));
+            }
+
+            const [paymentsData, buildingsData, unitsData] = await Promise.all(promises);
 
             setPayments(paymentsData);
             setBuildings(buildingsData);
+            setUnits(unitsData); // Set units
         } catch (error) {
             console.error('Failed to fetch data:', error);
             toast.error('Failed to fetch payments');
         } finally {
             setIsLoading(false);
         }
-    }, [isSuperAdmin, user, filterBuildingId, filterStatus, filterPeriod, filterYear, userIdParam]);
+    }, [isSuperAdmin, user, filterBuildingId, filterUnitId, filterStatus, filterPeriod, filterYear, userIdParam]);
 
     useEffect(() => {
         fetchData();
@@ -187,6 +200,21 @@ export default function PaymentsPage() {
                         </div>
                     )}
                     <div className="w-full md:w-48">
+                        <Select value={filterUnitId} onValueChange={setFilterUnitId} disabled={!isSuperAdmin && !user?.building_id && filterBuildingId === 'all'}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Filter by Unit" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Units</SelectItem>
+                                {units.map((u) => (
+                                    <SelectItem key={u.id} value={u.id}>
+                                        {u.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="w-full md:w-48">
                         <Select value={filterStatus} onValueChange={setFilterStatus}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Filter by Status" />
@@ -254,7 +282,14 @@ export default function PaymentsPage() {
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                                                 {payment.user?.name || 'Unknown'} <br />
-                                                <span className="text-xs text-muted-foreground">{payment.user?.building_name || ''} {payment.user?.unit ? `Unit ${payment.user.unit}` : ''}</span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {payment.user?.building_name || ''}
+                                                    {(() => {
+                                                        const unitId = payment.user?.unit_id || payment.unit_id;
+                                                        const unitName = unitId ? units.find(u => u.id === unitId)?.name : payment.user?.unit;
+                                                        return unitName ? ` Unit ${unitName}` : '';
+                                                    })()}
+                                                </span>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
                                                 {formatCurrency(payment.amount)}

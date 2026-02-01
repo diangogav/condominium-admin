@@ -5,6 +5,7 @@ export const paymentsService = {
     async getPayments(params?: {
         building_id?: string;
         user_id?: string;
+        unit_id?: string; // Added
         status?: string;
         period?: string;
         year?: string;

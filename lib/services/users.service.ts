@@ -6,6 +6,7 @@ export const usersService = {
         building_id?: string;
         role?: string;
         status?: string;
+        unit_id?: string; // Added
     }): Promise<User[]> {
         const { data } = await apiClient.get<User[]>('/users', { params });
         return data;

@@ -47,8 +47,8 @@ export function UnitsTab({ buildingId }: UnitsTabProps) {
     }, [buildingId]);
 
     // Helper to find resident for a unit
-    const getUnitResident = (unitName: string) => {
-        return users.find(u => u.unit === unitName);
+    const getUnitResident = (unit: Unit) => {
+        return users.find(u => u.unit_id === unit.id || u.unit === unit.name);
     };
 
     return (
@@ -90,7 +90,7 @@ export function UnitsTab({ buildingId }: UnitsTabProps) {
                                     </tr>
                                 ) : (
                                     units.map((unit) => {
-                                        const resident = getUnitResident(unit.name);
+                                        const resident = getUnitResident(unit);
                                         return (
                                             <tr
                                                 key={unit.id}
