@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { Building2, Users, CreditCard, DollarSign, TrendingUp, ArrowLeft, Search } from 'lucide-react';
+import { UnitsTab } from '@/components/buildings/UnitsTab';
 import { buildingsService } from '@/lib/services/buildings.service';
 import { usersService } from '@/lib/services/users.service';
 import { paymentsService } from '@/lib/services/payments.service';
@@ -199,6 +200,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                     <TabsList>
                         <TabsTrigger value="residents">Building Residents</TabsTrigger>
                         <TabsTrigger value="payments">Recent Payments</TabsTrigger>
+                        <TabsTrigger value="units">Units</TabsTrigger>
                     </TabsList>
 
                     {/* Residents Tab */}
@@ -324,6 +326,11 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                 )}
                             </CardContent>
                         </Card>
+                    </TabsContent>
+
+                    {/* Units Tab */}
+                    <TabsContent value="units" className="space-y-4">
+                        {effectiveBuildingId && <UnitsTab buildingId={effectiveBuildingId} />}
                     </TabsContent>
                 </Tabs>
             ) : (

@@ -102,3 +102,22 @@ export interface UpdatePaymentDto {
     notes?: string;
     approved_periods?: string[]; // Optional partial approval
 }
+
+export interface Unit {
+    id: string;
+    name: string;
+    floor: string;
+    aliquot: number;
+    building_id: string; // Likely included
+}
+
+export interface CreateUnitDto {
+    name: string;
+    floor: string;
+    aliquot?: number;
+}
+
+export interface BatchUnitDto {
+    floors: string[];
+    unitsPerFloor: string[];
+}
