@@ -18,6 +18,8 @@ import { usersService } from '@/lib/services/users.service';
 import { toast } from 'sonner';
 import { Crown, ArrowUp, ArrowDown, User as UserIcon, Building2, Loader2, Home } from 'lucide-react';
 import type { User, UserUnit } from '@/types/models';
+import { useBuildingContext } from '@/lib/contexts/BuildingContext';
+import { buildingsService } from '@/lib/services/buildings.service';
 
 interface UserRoleManagerProps {
     open: boolean;
@@ -28,6 +30,7 @@ interface UserRoleManagerProps {
 
 export function UserRoleManager({ open, onOpenChange, user, onSuccess }: UserRoleManagerProps) {
     const { isSuperAdmin, isBoardInBuilding } = usePermissions();
+    const { availableBuildings } = useBuildingContext();
     const [loadingUnitId, setLoadingUnitId] = useState<string | null>(null);
     const [userUnits, setUserUnits] = useState<UserUnit[]>([]);
     const [loading, setLoading] = useState(false);
@@ -40,7 +43,31 @@ export function UserRoleManager({ open, onOpenChange, user, onSuccess }: UserRol
                 try {
                     // GET /users/:id/units
                     const units = await usersService.getUserUnits(user.id);
-                    setUserUnits(units);
+
+                    // Enrich with building names
+                    const enrichedUnits = await Promise.all(
+                        units.map(async (unit) => {
+                            // Try to find in available context first (much faster)
+                            let buildingName = availableBuildings.find(b => b.id === unit.building_id)?.name;
+
+                            // If not found and user has permission (or just to display correctly), try fetch
+                            if (!buildingName) {
+                                try {
+                                    const building = await buildingsService.getBuildingById(unit.building_id);
+                                    buildingName = building.name;
+                                } catch (e) {
+                                    // Silent fail
+                                }
+                            }
+
+                            return {
+                                ...unit,
+                                building_name: buildingName || unit.building_name || 'Unknown Building'
+                            };
+                        })
+                    );
+
+                    setUserUnits(enrichedUnits);
                 } catch (error) {
                     console.error('Failed to fetch user units:', error);
                     // Fallback to user.units if API fails
@@ -51,7 +78,7 @@ export function UserRoleManager({ open, onOpenChange, user, onSuccess }: UserRol
             }
         };
         fetchUserUnits();
-    }, [open, user]);
+    }, [open, user, availableBuildings]);
 
     if (!user) return null;
 
