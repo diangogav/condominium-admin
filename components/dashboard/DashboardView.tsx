@@ -468,6 +468,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
             <InvoiceDialog
                 open={isInvoiceDialogOpen}
                 onOpenChange={setIsInvoiceDialogOpen}
+                buildingId={effectiveBuildingId as string}
                 onSuccess={fetchData}
             />
         </div>

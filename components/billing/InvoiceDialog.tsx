@@ -37,7 +37,7 @@ import type { Unit } from '@/types/models';
 
 const invoiceSchema = z.object({
     unit_id: z.string().min(1, 'Unit is required'),
-    amount: z.number().positive('Amount must be positive'),
+    amount: z.union([z.number(), z.string().min(1, 'Amount is required')]).transform((val) => Number(val)),
     period: z.string().regex(/^\d{4}-\d{2}$/, 'Period must be in YYYY-MM format'),
     description: z.string().min(3, 'Description must be at least 3 characters'),
     due_date: z.string().optional(),
@@ -45,7 +45,7 @@ const invoiceSchema = z.object({
 
 type InvoiceFormValues = {
     unit_id: string;
-    amount: number;
+    amount: string | number;
     period: string;
     description: string;
     due_date?: string;
@@ -56,10 +56,12 @@ interface InvoiceDialogProps {
     onOpenChange: (open: boolean) => void;
     onSuccess: () => void;
     initialUnitId?: string;
+    buildingId?: string;
 }
 
-export function InvoiceDialog({ open, onOpenChange, onSuccess, initialUnitId }: InvoiceDialogProps) {
-    const { buildingId } = usePermissions();
+export function InvoiceDialog({ open, onOpenChange, onSuccess, initialUnitId, buildingId: propBuildingId }: InvoiceDialogProps) {
+    const { buildingId: permissionsBuildingId } = usePermissions();
+    const effectiveBuildingId = propBuildingId || permissionsBuildingId;
     const [units, setUnits] = useState<Unit[]>([]);
     const [isLoadingUnits, setIsLoadingUnits] = useState(false);
 
@@ -67,7 +69,7 @@ export function InvoiceDialog({ open, onOpenChange, onSuccess, initialUnitId }: 
         resolver: zodResolver(invoiceSchema),
         defaultValues: {
             unit_id: initialUnitId || '',
-            amount: 0,
+            amount: '',
             period: new Date().toISOString().slice(0, 7),
             description: '',
             due_date: '',
@@ -75,11 +77,13 @@ export function InvoiceDialog({ open, onOpenChange, onSuccess, initialUnitId }: 
     });
 
     useEffect(() => {
-        if (open && buildingId) {
+        if (open && effectiveBuildingId) {
             const fetchUnits = async () => {
                 try {
                     setIsLoadingUnits(true);
-                    const data = await unitsService.getUnits(buildingId);
+                    console.log('Fetching units for building:', effectiveBuildingId);
+                    const data = await unitsService.getUnits(effectiveBuildingId);
+                    console.log('Units fetched:', data);
                     setUnits(data);
                 } catch (error) {
                     console.error('Failed to fetch units', error);
@@ -90,7 +94,7 @@ export function InvoiceDialog({ open, onOpenChange, onSuccess, initialUnitId }: 
             };
             fetchUnits();
         }
-    }, [open, buildingId]);
+    }, [open, effectiveBuildingId]);
 
     useEffect(() => {
         if (initialUnitId && open) {
@@ -105,7 +109,7 @@ export function InvoiceDialog({ open, onOpenChange, onSuccess, initialUnitId }: 
                 ...values,
                 amount: Number(values.amount)
             };
-            await billingService.loadDebt(payload);
+            await billingService.loadDebt(payload as any);
             toast.success('Invoice created successfully');
             onSuccess();
             onOpenChange(false);
@@ -145,11 +149,17 @@ export function InvoiceDialog({ open, onOpenChange, onSuccess, initialUnitId }: 
                                             </SelectTrigger>
                                         </FormControl>
                                         <SelectContent>
-                                            {units.map((unit) => (
-                                                <SelectItem key={unit.id} value={unit.id}>
-                                                    {unit.name} {unit.floor ? `(Floor ${unit.floor})` : ''}
-                                                </SelectItem>
-                                            ))}
+                                            {isLoadingUnits ? (
+                                                <SelectItem value="loading" disabled>Loading units...</SelectItem>
+                                            ) : units.length === 0 ? (
+                                                <SelectItem value="none" disabled>No units found</SelectItem>
+                                            ) : (
+                                                units.map((unit) => (
+                                                    <SelectItem key={unit.id} value={unit.id}>
+                                                        {unit.name} {unit.floor ? `(Floor ${unit.floor})` : ''}
+                                                    </SelectItem>
+                                                ))
+                                            )}
                                         </SelectContent>
                                     </Select>
                                     <FormMessage />
@@ -168,7 +178,8 @@ export function InvoiceDialog({ open, onOpenChange, onSuccess, initialUnitId }: 
                                             type="number"
                                             step="0.01"
                                             {...field}
-                                            onChange={(e) => field.onChange(Number(e.target.value))}
+                                            value={field.value}
+                                            onChange={(e) => field.onChange(e.target.value)}
                                         />
                                     </FormControl>
                                     <FormMessage />

@@ -264,6 +264,7 @@ export default function BillingPage() {
             <InvoiceDialog
                 open={isInvoiceDialogOpen}
                 onOpenChange={setIsInvoiceDialogOpen}
+                buildingId={isSuperAdmin ? (filterBuildingId !== 'all' ? filterBuildingId : undefined) : buildingId}
                 onSuccess={fetchData}
             />
         </div >
