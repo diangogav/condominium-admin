@@ -11,6 +11,7 @@ import { usersService } from '@/lib/services/users.service';
 import { paymentsService } from '@/lib/services/payments.service';
 import { billingService } from '@/lib/services/billing.service';
 import { formatCurrency, formatDate } from '@/lib/utils/format';
+import { toast } from 'sonner';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -26,7 +27,7 @@ interface DashboardViewProps {
 }
 
 export function DashboardView({ buildingId, showBuildingFilter = false }: DashboardViewProps) {
-    const { isSuperAdmin, user, buildingId: permissionsBuildingId, buildingName } = usePermissions();
+    const { isSuperAdmin, user, buildingId: permissionsBuildingId, buildingName, isBoardInBuilding } = usePermissions();
     const router = useRouter();
 
     const effectiveBuildingId = buildingId || (!isSuperAdmin ? permissionsBuildingId : undefined);
@@ -43,6 +44,14 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
     const [searchPayments, setSearchPayments] = useState('');
     const [searchInvoices, setSearchInvoices] = useState('');
     const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
+
+    // Check if user has access to this building
+    useEffect(() => {
+        if (effectiveBuildingId && !isBoardInBuilding(effectiveBuildingId)) {
+            toast.error('You do not have access to this building');
+            router.push('/dashboard');
+        }
+    }, [effectiveBuildingId, isBoardInBuilding, router]);
 
     const fetchData = useCallback(async () => {
         try {

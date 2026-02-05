@@ -12,7 +12,7 @@ import { usePermissions } from '@/lib/hooks/usePermissions';
 import { useRouter } from 'next/navigation';
 
 export default function BuildingsPage() {
-    const { isSuperAdmin, isBoardMember, user: currentUser } = usePermissions();
+    const { isSuperAdmin, isBoardMember, user: currentUser, getBoardBuildings } = usePermissions();
     const router = useRouter();
     const [buildings, setBuildings] = useState<Building[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -25,9 +25,10 @@ export default function BuildingsPage() {
             setIsLoading(true);
             const data = await buildingsService.getBuildings();
 
-            // Filter if board member
-            if (isBoardMember && !isSuperAdmin && currentUser?.building_id) {
-                setBuildings(data.filter(b => b.id === currentUser.building_id));
+            // Filter by board buildings if not admin
+            if (!isSuperAdmin) {
+                const boardBuildingIds = getBoardBuildings();
+                setBuildings(data.filter(b => boardBuildingIds.includes(b.id)));
             } else {
                 setBuildings(data);
             }
@@ -45,18 +46,19 @@ export default function BuildingsPage() {
             return;
         }
 
-        // Direct redirect for Board Members who don't belong in the global list
-        // Use a more robust check for buildingId matching usePermissions
-        const effectiveBuildingIdForBoard = currentUser?.building_id || currentUser?.building?.id;
-        if (isBoardMember && !isSuperAdmin && effectiveBuildingIdForBoard) {
-            router.push(`/buildings/${effectiveBuildingIdForBoard}/dashboard`);
+        const boardBuildings = getBoardBuildings();
+
+        // Direct redirect for single-building board members
+        if (!isSuperAdmin && boardBuildings.length === 1) {
+            router.push(`/buildings/${boardBuildings[0]}/dashboard`);
             return;
         }
 
-        if (isSuperAdmin) {
+        // Fetch buildings for admin or multi-building board
+        if (isSuperAdmin || boardBuildings.length > 0) {
             fetchBuildings();
         }
-    }, [isSuperAdmin, isBoardMember, router, (currentUser?.building_id || currentUser?.building?.id)]);
+    }, [isSuperAdmin, isBoardMember, router]);
 
     const handleCreate = () => {
         setSelectedBuilding(null);

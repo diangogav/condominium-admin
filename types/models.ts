@@ -8,6 +8,7 @@ export interface UserUnit {
     unit_id: string;
     building_id: string;
     role: 'owner' | 'resident';
+    building_role?: 'board' | 'resident' | 'owner';
     is_primary: boolean;
     // Helper fields for UI (might be enriched by frontend)
     name?: string;
