@@ -28,13 +28,12 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { usersService } from '@/lib/services/users.service';
 import { unitsService } from '@/lib/services/units.service';
+import { Shield, User as UserIcon, Phone, Mail, Building2, Home } from 'lucide-react';
 import type { User, Building, Unit } from '@/types/models';
-
 
 interface UserDialogProps {
     open: boolean;
@@ -46,31 +45,48 @@ interface UserDialogProps {
 
 export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: UserDialogProps) {
     const [units, setUnits] = useState<Unit[]>([]);
+    const [loadingUnits, setLoadingUnits] = useState(false);
 
-    const schema = z.object({
+    // Different schemas for create vs edit
+    const createSchema = z.object({
         name: z.string().min(2, 'Name must be at least 2 characters'),
         email: z.string().email('Invalid email address'),
-        password: user
-            ? z.string().optional()
-            : z.string().min(6, 'Password is required for new users'),
+        password: z.string().min(6, 'Password is required'),
         phone: z.string().optional(),
-        unit_ids: z.array(z.string()).optional(), // Changed to array
         building_id: z.string().min(1, 'Building is required'),
+        unit_id: z.string().optional(),
         role: z.enum(['resident', 'board', 'admin']),
         status: z.enum(['active', 'pending', 'inactive', 'rejected']),
     });
 
+    const editSchema = z.object({
+        name: z.string().min(2, 'Name must be at least 2 characters'),
+        email: z.string().email('Invalid email address'),
+        password: z.string().optional(),
+        phone: z.string().optional(),
+        role: z.enum(['resident', 'board', 'admin']),
+        status: z.enum(['active', 'pending', 'inactive', 'rejected']),
+    });
+
+    const schema = user ? editSchema : createSchema;
     type UserFormData = z.infer<typeof schema>;
 
     const form = useForm<UserFormData>({
         resolver: zodResolver(schema),
-        defaultValues: {
+        defaultValues: user ? {
             name: '',
             email: '',
             password: '',
             phone: '',
-            unit_ids: [],
+            role: 'resident',
+            status: 'active',
+        } : {
+            name: '',
+            email: '',
+            password: '',
+            phone: '',
             building_id: '',
+            unit_id: '',
             role: 'resident',
             status: 'active',
         },
@@ -78,96 +94,83 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
 
     const selectedBuildingId = form.watch('building_id');
 
+    // Fetch units when building is selected (only for create mode)
     useEffect(() => {
         const fetchUnits = async () => {
-            if (selectedBuildingId) {
+            if (!user && selectedBuildingId) {
+                setLoadingUnits(true);
                 try {
                     const fetchedUnits = await unitsService.getUnits(selectedBuildingId);
                     setUnits(fetchedUnits);
                 } catch (error) {
-                    console.error("Failed to fetch units", error);
-                    toast.error("Failed to load units for selected building");
+                    console.error('Failed to fetch units', error);
+                    toast.error('Failed to load units for selected building');
                     setUnits([]);
+                } finally {
+                    setLoadingUnits(false);
                 }
             } else {
                 setUnits([]);
             }
         };
         fetchUnits();
-    }, [selectedBuildingId]);
+    }, [selectedBuildingId, user]);
 
-    // Reset form when user changes
+    // Reset form when user/dialog state changes
     useEffect(() => {
         if (user) {
-            // Extract unit IDs from user object
-            let initialUnitIds: string[] = [];
-            if (user.units && user.units.length > 0) {
-                // Handle both UserUnit (unit_id) and raw Unit (id) structures
-                initialUnitIds = user.units.map(u => u.unit_id || (u as any).id).filter(Boolean);
-            } else if (user.unit_id) {
-                initialUnitIds = [user.unit_id];
-            }
-
-            // Robust building ID extraction
-            // Check root, then building object, then first unit's building
-            const buildingId = user.building_id ||
-                user.building?.id ||
-                (user.units && user.units.length > 0 ? user.units[0].building_id : '') ||
-                '';
-
+            // Edit mode - profile only
             form.reset({
                 name: user.name,
                 email: user.email,
                 password: '',
                 phone: user.phone || '',
-                unit_ids: initialUnitIds,
-                building_id: buildingId,
                 role: user.role,
                 status: user.status || 'active',
             });
         } else {
+            // Create mode - includes building/unit
             form.reset({
                 name: '',
                 email: '',
                 password: '',
                 phone: '',
-                unit_ids: [],
                 building_id: '',
+                unit_id: '',
                 role: 'resident',
                 status: 'active',
             });
         }
-    }, [user, form]);
+    }, [user, open, form]);
 
-    const onSubmit = async (data: UserFormData) => {
+    const onSubmit = async (data: any) => {
         try {
-            // Data transformation
-            const payload = {
-                ...data,
-                // We send unit_ids. 
-                // Legacy 'unit' name string support: join names of selected units
-                unit: units
-                    .filter(u => data.unit_ids?.includes(u.id))
-                    .map(u => u.name)
-                    .join(', '),
-            };
-
             if (user) {
-                const updateData: any = { ...payload };
-                if (!updateData.password) delete updateData.password;
+                // PATCH /users/:id - Only profile data
+                const updateData: any = {
+                    name: data.name,
+                    phone: data.phone,
+                    role: data.role,
+                };
+
+                if (data.password) {
+                    updateData.password = data.password;
+                }
 
                 await usersService.updateUser(user.id, updateData);
-                toast.success('User updated successfully');
+                toast.success('User profile updated successfully');
             } else {
-                if (!data.password) {
-                    form.setError('password', { message: 'Password is required' });
-                    return;
-                }
+                // POST /users - Requires building_id
                 await usersService.createUser({
-                    ...payload,
+                    name: data.name,
+                    email: data.email,
                     password: data.password,
+                    phone: data.phone,
+                    building_id: data.building_id,
+                    unit_id: data.unit_id, // Optional
+                    role: data.role,
                 });
-                toast.success('User created successfully');
+                toast.success('User created successfully! Use "Manage Roles" to add more units.');
             }
             onSuccess();
             onOpenChange(false);
@@ -177,15 +180,66 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
         }
     };
 
+    const getRoleBadgeColor = (role: string) => {
+        switch (role) {
+            case 'admin':
+                return 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border-amber-500/30';
+            case 'board':
+                return 'bg-gradient-to-r from-purple-500/20 to-indigo-500/20 text-purple-300 border-purple-500/30';
+            default:
+                return 'bg-muted/50 text-muted-foreground border-border/50';
+        }
+    };
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto border-border/50 bg-gradient-to-br from-card/95 to-card/100 backdrop-blur">
                 <DialogHeader>
-                    <DialogTitle>{user ? 'Edit User' : 'Create User'}</DialogTitle>
+                    <DialogTitle className="flex items-center gap-2 text-xl">
+                        {user ? (
+                            <>
+                                <UserIcon className="h-5 w-5 text-primary" />
+                                Edit User Profile
+                            </>
+                        ) : (
+                            <>
+                                <Shield className="h-5 w-5 text-primary" />
+                                Create New User
+                            </>
+                        )}
+                    </DialogTitle>
                     <DialogDescription>
-                        {user ? 'Update user details.' : 'Add a new user to the system.'}
+                        {user
+                            ? 'Update user profile information. Use "Manage Roles" to assign units and building permissions.'
+                            : 'Create a new user account. You can assign units after creation.'}
                     </DialogDescription>
                 </DialogHeader>
+
+                {user && user.units && user.units.length > 0 && (
+                    <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 space-y-2">
+                        <p className="text-xs font-medium text-primary">Current Units ({user.units.length})</p>
+                        <div className="flex flex-wrap gap-1">
+                            {user.units.slice(0, 3).map((unit) => (
+                                <Badge
+                                    key={unit.unit_id}
+                                    variant="outline"
+                                    className="text-xs bg-background/50"
+                                >
+                                    {unit.name || unit.unit_id.slice(0, 8)}
+                                </Badge>
+                            ))}
+                            {user.units.length > 3 && (
+                                <Badge variant="outline" className="text-xs">
+                                    +{user.units.length - 3} more
+                                </Badge>
+                            )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            Use "Manage Roles" to edit unit assignments
+                        </p>
+                    </div>
+                )}
+
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                         <FormField
@@ -193,28 +247,46 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
                             name="name"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Name</FormLabel>
+                                    <FormLabel className="flex items-center gap-2">
+                                        <UserIcon className="h-4 w-4 text-muted-foreground" />
+                                        Name
+                                    </FormLabel>
                                     <FormControl>
-                                        <Input {...field} placeholder="John Doe" />
+                                        <Input
+                                            {...field}
+                                            placeholder="John Doe"
+                                            className="bg-background/50 border-border/50 focus:border-primary transition-colors"
+                                        />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
+
                         <FormField
                             control={form.control}
                             name="email"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Email</FormLabel>
+                                    <FormLabel className="flex items-center gap-2">
+                                        <Mail className="h-4 w-4 text-muted-foreground" />
+                                        Email
+                                    </FormLabel>
                                     <FormControl>
-                                        <Input {...field} type="email" placeholder="john@example.com" disabled={!!user} />
+                                        <Input
+                                            {...field}
+                                            type="email"
+                                            placeholder="john@example.com"
+                                            disabled={!!user}
+                                            className="bg-background/50 border-border/50 focus:border-primary transition-colors"
+                                        />
                                     </FormControl>
-                                    {user && <p className="text-[0.8rem] text-muted-foreground">Email cannot be changed.</p>}
+                                    {user && <p className="text-[0.8rem] text-amber-400/80">⚠️ Email cannot be changed</p>}
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
+
                         <FormField
                             control={form.control}
                             name="password"
@@ -222,111 +294,121 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
                                 <FormItem>
                                     <FormLabel>{user ? 'New Password (Optional)' : 'Password'}</FormLabel>
                                     <FormControl>
-                                        <Input {...field} type="password" placeholder={user ? 'Leave blank to keep current' : '******'} />
+                                        <Input
+                                            {...field}
+                                            type="password"
+                                            placeholder={user ? 'Leave blank to keep current' : '******'}
+                                            className="bg-background/50 border-border/50 focus:border-primary transition-colors"
+                                        />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
+
                         <FormField
                             control={form.control}
                             name="phone"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Phone (Optional)</FormLabel>
+                                    <FormLabel className="flex items-center gap-2">
+                                        <Phone className="h-4 w-4 text-muted-foreground" />
+                                        Phone (Optional)
+                                    </FormLabel>
                                     <FormControl>
-                                        <Input {...field} placeholder="+58..." />
+                                        <Input
+                                            {...field}
+                                            placeholder="+507 6000-0000"
+                                            className="bg-background/50 border-border/50 focus:border-primary transition-colors"
+                                        />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
 
-                        <FormField
-                            control={form.control}
-                            name="building_id"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Building</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                                        <FormControl>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select building" />
-                                            </SelectTrigger>
-                                        </FormControl>
-                                        <SelectContent>
-                                            {buildings.map((b) => (
-                                                <SelectItem key={b.id} value={b.id}>
-                                                    {b.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-
-                        <FormField
-                            control={form.control}
-                            name="unit_ids"
-                            render={() => (
-                                <FormItem>
-                                    <div className="mb-4">
-                                        <FormLabel className="text-base">Units</FormLabel>
-                                        <FormDescription>
-                                            Select all units owned/occupied by this user.
-                                        </FormDescription>
-                                    </div>
-                                    <div className="border rounded-md p-4">
-                                        {!selectedBuildingId ? (
-                                            <p className="text-sm text-muted-foreground text-center">Select a building first</p>
-                                        ) : units.length === 0 ? (
-                                            <p className="text-sm text-muted-foreground text-center">Loading units...</p>
-                                        ) : (
-                                            <ScrollArea className="h-[150px]">
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    {units.map((unit) => (
-                                                        <FormField
-                                                            key={unit.id}
-                                                            control={form.control}
-                                                            name="unit_ids"
-                                                            render={({ field }) => {
-                                                                return (
-                                                                    <FormItem
-                                                                        key={unit.id}
-                                                                        className="flex flex-row items-start space-x-3 space-y-0"
-                                                                    >
-                                                                        <FormControl>
-                                                                            <Checkbox
-                                                                                checked={field.value?.includes(unit.id)}
-                                                                                onCheckedChange={(checked: boolean | 'indeterminate') => {
-                                                                                    return checked === true
-                                                                                        ? field.onChange([...(field.value || []), unit.id])
-                                                                                        : field.onChange(
-                                                                                            field.value?.filter(
-                                                                                                (value) => value !== unit.id
-                                                                                            )
-                                                                                        )
-                                                                                }}
-                                                                            />
-                                                                        </FormControl>
-                                                                        <FormLabel className="font-normal cursor-pointer">
-                                                                            {unit.name}
-                                                                        </FormLabel>
-                                                                    </FormItem>
-                                                                )
-                                                            }}
-                                                        />
+                        {/* Only show building/unit for CREATE mode */}
+                        {!user && (
+                            <>
+                                <FormField
+                                    control={form.control}
+                                    name="building_id"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="flex items-center gap-2">
+                                                <Building2 className="h-4 w-4 text-muted-foreground" />
+                                                Building <span className="text-destructive">*</span>
+                                            </FormLabel>
+                                            <Select onValueChange={field.onChange} value={field.value}>
+                                                <FormControl>
+                                                    <SelectTrigger className="bg-background/50 border-border/50">
+                                                        <SelectValue placeholder="Select building" />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    {buildings.map((b) => (
+                                                        <SelectItem key={b.id} value={b.id}>
+                                                            <div className="flex items-center gap-2">
+                                                                <Building2 className="h-4 w-4 text-primary" />
+                                                                {b.name}
+                                                            </div>
+                                                        </SelectItem>
                                                     ))}
-                                                </div>
-                                            </ScrollArea>
-                                        )}
-                                    </div>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
+                                                </SelectContent>
+                                            </Select>
+                                            <FormDescription className="text-xs">
+                                                Required for user creation
+                                            </FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="unit_id"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="flex items-center gap-2">
+                                                <Home className="h-4 w-4 text-muted-foreground" />
+                                                Unit (Optional)
+                                            </FormLabel>
+                                            <Select
+                                                onValueChange={field.onChange}
+                                                value={field.value}
+                                                disabled={!selectedBuildingId || loadingUnits}
+                                            >
+                                                <FormControl>
+                                                    <SelectTrigger className="bg-background/50 border-border/50">
+                                                        <SelectValue placeholder={
+                                                            !selectedBuildingId
+                                                                ? "Select building first"
+                                                                : loadingUnits
+                                                                    ? "Loading units..."
+                                                                    : "Select unit (optional)"
+                                                        } />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    {units.map((unit) => (
+                                                        <SelectItem key={unit.id} value={unit.id}>
+                                                            <div className="flex items-center gap-2">
+                                                                <Home className="h-4 w-4 text-primary" />
+                                                                {unit.name}
+                                                            </div>
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <FormDescription className="text-xs">
+                                                You can assign more units later via "Manage Roles"
+                                            </FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </>
+                        )}
 
                         <div className="grid grid-cols-2 gap-4">
                             <FormField
@@ -334,32 +416,48 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
                                 name="role"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Role</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                        <FormLabel className="flex items-center gap-2">
+                                            <Shield className="h-4 w-4 text-muted-foreground" />
+                                            Global Role
+                                        </FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value}>
                                             <FormControl>
-                                                <SelectTrigger>
+                                                <SelectTrigger className="bg-background/50 border-border/50">
                                                     <SelectValue placeholder="Select role" />
                                                 </SelectTrigger>
                                             </FormControl>
                                             <SelectContent>
-                                                <SelectItem value="resident">Resident</SelectItem>
-                                                <SelectItem value="board">Board Member</SelectItem>
-                                                <SelectItem value="admin">Admin</SelectItem>
+                                                <SelectItem value="resident">
+                                                    <Badge variant="outline" className={getRoleBadgeColor('resident')}>
+                                                        Resident
+                                                    </Badge>
+                                                </SelectItem>
+                                                <SelectItem value="board">
+                                                    <Badge variant="outline" className={getRoleBadgeColor('board')}>
+                                                        Board
+                                                    </Badge>
+                                                </SelectItem>
+                                                <SelectItem value="admin">
+                                                    <Badge variant="outline" className={getRoleBadgeColor('admin')}>
+                                                        Admin
+                                                    </Badge>
+                                                </SelectItem>
                                             </SelectContent>
                                         </Select>
                                         <FormMessage />
                                     </FormItem>
                                 )}
                             />
+
                             <FormField
                                 control={form.control}
                                 name="status"
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Status</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                        <Select onValueChange={field.onChange} value={field.value}>
                                             <FormControl>
-                                                <SelectTrigger>
+                                                <SelectTrigger className="bg-background/50 border-border/50">
                                                     <SelectValue placeholder="Select status" />
                                                 </SelectTrigger>
                                             </FormControl>
@@ -375,8 +473,14 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
                                 )}
                             />
                         </div>
+
                         <DialogFooter>
-                            <Button type="submit">{user ? 'Save Changes' : 'Create User'}</Button>
+                            <Button
+                                type="submit"
+                                className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 transition-all"
+                            >
+                                {user ? 'Save Changes' : 'Create User'}
+                            </Button>
                         </DialogFooter>
                     </form>
                 </Form>
