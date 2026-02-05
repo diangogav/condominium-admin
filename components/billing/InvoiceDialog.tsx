@@ -39,15 +39,17 @@ import { Building2, Home, DollarSign, FileText, Calendar } from 'lucide-react';
 import type { Unit, Building } from '@/types/models';
 
 // Schema defined outside component to avoid re-creation
+// Schema defined outside component to avoid re-creation
 const createInvoiceSchema = (needsBuildingSelector: boolean) => z.object({
-    building_id: needsBuildingSelector
-        ? z.string().min(1, 'Building is required')
-        : z.string().optional(),
+    building_id: z.string().optional(),
     unit_id: z.string().min(1, 'Unit is required'),
     amount: z.string().min(1, 'Amount is required'),
     period: z.string().regex(/^\d{4}-\d{2}$/, 'Period must be in YYYY-MM format'),
     description: z.string().min(3, 'Description must be at least 3 characters'),
     due_date: z.string().optional(),
+}).refine(data => !needsBuildingSelector || (data.building_id && data.building_id.length > 0), {
+    message: "Building is required",
+    path: ["building_id"],
 });
 
 type InvoiceFormData = {
