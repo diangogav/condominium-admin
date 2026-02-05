@@ -192,7 +192,7 @@ export default function UsersPage() {
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-foreground">Users</h1>
+                    <h1 className="text-2xl md:text-3xl font-bold text-foreground">Users</h1>
                     <p className="text-muted-foreground mt-1">Manage users and permissions</p>
                 </div>
                 {isSuperAdmin && (
@@ -260,9 +260,11 @@ export default function UsersPage() {
                 </div>
             </Card>
 
+            {/* Users List - Responsive View */}
             <Card className="border-border/50 bg-card">
                 <CardContent className="p-0">
-                    <div className="overflow-x-auto">
+                    {/* Desktop View (Table) */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full">
                             <thead className="bg-muted/50 border-b border-border/50">
                                 <tr>
@@ -287,107 +289,224 @@ export default function UsersPage() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    users.map((user) => {
-                                        return (
-                                            <tr key={user.id} className="hover:bg-accent/50 transition-colors">
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="text-sm font-medium text-foreground">{user.name}</div>
-                                                    <div className="text-sm text-muted-foreground">{user.email}</div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <Badge variant="outline">{formatUserRole(user.role)}</Badge>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    {user.units && user.units.length > 0 ? (
-                                                        <div className="space-y-1.5 max-w-md">
-                                                            {user.units.map((unit) => (
-                                                                <div
-                                                                    key={unit.unit_id}
-                                                                    className="flex items-center gap-2 text-xs p-1.5 rounded-md bg-background/50 border border-border/30"
-                                                                >
-                                                                    <Building2 className="h-3 w-3 text-primary flex-shrink-0" />
-                                                                    <span className="font-medium text-foreground">
-                                                                        {unit.building_name || 'Unknown Building'}
-                                                                    </span>
-                                                                    <span className="text-muted-foreground">→</span>
-                                                                    <Home className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                                                    <span className="text-foreground">
-                                                                        {unit.name || unit.unit_id.slice(0, 8)}
-                                                                    </span>
-                                                                    {unit.is_primary && (
-                                                                        <Badge className="text-[9px] h-4 px-1 bg-amber-500/20 text-amber-300 border-amber-500/30">
-                                                                            ★ Primary
-                                                                        </Badge>
-                                                                    )}
-                                                                    <BuildingRoleBadge
-                                                                        buildingRole={unit.building_role}
-                                                                        className="text-[9px] h-4 px-1.5"
-                                                                    />
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-xs text-muted-foreground italic">No units assigned</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <Badge variant={
-                                                        user.status === 'active' ? 'default' :
-                                                            user.status === 'pending' ? 'secondary' :
-                                                                'destructive'
-                                                    }>
-                                                        {user.status || 'active'}
-                                                    </Badge>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" className="h-8 w-8 p-0">
-                                                                <span className="sr-only">Open menu</span>
-                                                                <MoreHorizontal className="h-4 w-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                            <DropdownMenuItem onClick={() => handleEdit(user)}>
-                                                                <Edit className="mr-2 h-4 w-4" /> Edit Details
-                                                            </DropdownMenuItem>
-                                                            {user.status === 'pending' && (
-                                                                <>
-                                                                    <DropdownMenuSeparator />
-                                                                    <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'active')} className="text-green-600">
-                                                                        <CheckCircle className="mr-2 h-4 w-4" /> Approve
-                                                                    </DropdownMenuItem>
-                                                                    <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'rejected')} className="text-red-600">
-                                                                        <XCircle className="mr-2 h-4 w-4" /> Reject
-                                                                    </DropdownMenuItem>
-                                                                </>
-                                                            )}
-                                                            {user.status !== 'pending' && user.status !== 'rejected' && (
-                                                                <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'rejected')} className="text-red-600">
-                                                                    <XCircle className="mr-2 h-4 w-4" /> Deactivate/Reject
+                                    users.map((user) => (
+                                        <tr key={user.id} className="hover:bg-accent/50 transition-colors">
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <div className="text-sm font-medium text-foreground">{user.name}</div>
+                                                <div className="text-sm text-muted-foreground">{user.email}</div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <Badge variant="outline">{formatUserRole(user.role)}</Badge>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {user.units && user.units.length > 0 ? (
+                                                    <div className="space-y-1.5 max-w-md">
+                                                        {user.units.map((unit) => (
+                                                            <div
+                                                                key={`${unit.building_id}-${unit.unit_id}`}
+                                                                className="flex items-center gap-2 text-xs p-1.5 rounded-md bg-background/50 border border-border/30"
+                                                            >
+                                                                <Building2 className="h-3 w-3 text-primary flex-shrink-0" />
+                                                                <span className="font-medium text-foreground">
+                                                                    {unit.building_name || 'Unknown Building'}
+                                                                </span>
+                                                                <span className="text-muted-foreground">→</span>
+                                                                <Home className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                                                <span className="text-foreground">
+                                                                    {unit.name || unit.unit_id.slice(0, 8)}
+                                                                </span>
+                                                                {unit.is_primary && (
+                                                                    <Badge className="text-[9px] h-4 px-1 bg-amber-500/20 text-amber-300 border-amber-500/30">
+                                                                        ★ Primary
+                                                                    </Badge>
+                                                                )}
+                                                                <BuildingRoleBadge
+                                                                    buildingRole={unit.building_role}
+                                                                    className="text-[9px] h-4 px-1.5"
+                                                                />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-muted-foreground italic">No units assigned</span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <Badge variant={
+                                                    user.status === 'active' ? 'default' :
+                                                        user.status === 'pending' ? 'secondary' :
+                                                            'destructive'
+                                                }>
+                                                    {user.status || 'active'}
+                                                </Badge>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                {/* Desktop Actions */}
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" className="h-8 w-8 p-0">
+                                                            <span className="sr-only">Open menu</span>
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                                        <DropdownMenuItem onClick={() => handleEdit(user)}>
+                                                            <Edit className="mr-2 h-4 w-4" /> Edit Details
+                                                        </DropdownMenuItem>
+                                                        {user.status === 'pending' && (
+                                                            <>
+                                                                <DropdownMenuSeparator />
+                                                                <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'active')} className="text-green-600">
+                                                                    <CheckCircle className="mr-2 h-4 w-4" /> Approve
                                                                 </DropdownMenuItem>
-                                                            )}
-                                                            <DropdownMenuSeparator />
-                                                            <DropdownMenuItem onClick={() => handleManageUnits(user)}>
-                                                                <Home className="mr-2 h-4 w-4" /> Manage Units
+                                                                <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'rejected')} className="text-red-600">
+                                                                    <XCircle className="mr-2 h-4 w-4" /> Reject
+                                                                </DropdownMenuItem>
+                                                            </>
+                                                        )}
+                                                        {user.status !== 'pending' && user.status !== 'rejected' && (
+                                                            <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'rejected')} className="text-red-600">
+                                                                <XCircle className="mr-2 h-4 w-4" /> Deactivate/Reject
                                                             </DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => handleManageRoles(user)}>
-                                                                <Crown className="mr-2 h-4 w-4" /> Manage Roles
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuSeparator />
-                                                            <DropdownMenuItem onClick={() => handleDelete(user.id)} className="text-red-600">
-                                                                <Trash2 className="mr-2 h-4 w-4" /> Delete User
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </td>
-                                            </tr>
-                                        )
-                                    })
+                                                        )}
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem onClick={() => handleManageUnits(user)}>
+                                                            <Home className="mr-2 h-4 w-4" /> Manage Units
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleManageRoles(user)}>
+                                                            <Crown className="mr-2 h-4 w-4" /> Manage Roles
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem onClick={() => handleDelete(user.id)} className="text-red-600">
+                                                            <Trash2 className="mr-2 h-4 w-4" /> Delete User
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </td>
+                                        </tr>
+                                    ))
                                 )}
                             </tbody>
                         </table>
+                    </div>
+
+                    {/* Mobile View (Cards) */}
+                    <div className="md:hidden divide-y divide-border/50">
+                        {isLoading ? (
+                            <div className="p-8 text-center text-muted-foreground">
+                                Loading users...
+                            </div>
+                        ) : users.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground">
+                                No users found matching filters.
+                            </div>
+                        ) : (
+                            users.map((user) => (
+                                <div key={user.id} className="p-4 space-y-4">
+                                    <div className="flex items-start justify-between">
+                                        <div>
+                                            <div className="text-base font-medium text-foreground">{user.name}</div>
+                                            <div className="text-sm text-muted-foreground">{user.email}</div>
+                                        </div>
+                                        <Badge variant={
+                                            user.status === 'active' ? 'default' :
+                                                user.status === 'pending' ? 'secondary' :
+                                                    'destructive'
+                                        }>
+                                            {user.status || 'active'}
+                                        </Badge>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-xs">{formatUserRole(user.role)}</Badge>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                            Units & Buildings
+                                        </div>
+                                        {user.units && user.units.length > 0 ? (
+                                            <div className="space-y-2">
+                                                {user.units.map((unit) => (
+                                                    <div
+                                                        key={`${unit.building_id}-${unit.unit_id}`}
+                                                        className="flex flex-col gap-1 text-xs p-2 rounded-md bg-background/50 border border-border/30"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <Building2 className="h-3 w-3 text-primary" />
+                                                            <span className="font-medium text-foreground">
+                                                                {unit.building_name || 'Unknown Building'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 pl-5">
+                                                            <Home className="h-3 w-3 text-muted-foreground" />
+                                                            <span className="text-foreground">
+                                                                {unit.name || unit.unit_id.slice(0, 8)}
+                                                            </span>
+                                                            {unit.is_primary && (
+                                                                <Badge className="text-[9px] h-4 px-1 bg-amber-500/20 text-amber-300 border-amber-500/30">
+                                                                    ★ Primary
+                                                                </Badge>
+                                                            )}
+                                                            <BuildingRoleBadge
+                                                                buildingRole={unit.building_role}
+                                                                className="text-[9px] h-4 px-1.5"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground italic">No units assigned</span>
+                                        )}
+                                    </div>
+
+                                    <div className="pt-2 border-t border-border/30 flex justify-end">
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="outline" size="sm" className="w-full">
+                                                    Manage User <MoreHorizontal className="ml-2 h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="w-56">
+                                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                                <DropdownMenuItem onClick={() => handleEdit(user)}>
+                                                    <Edit className="mr-2 h-4 w-4" /> Edit Details
+                                                </DropdownMenuItem>
+                                                {user.status === 'pending' && (
+                                                    <>
+                                                        <DropdownMenuSeparator />
+                                                        <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'active')} className="text-green-600">
+                                                            <CheckCircle className="mr-2 h-4 w-4" /> Approve
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'rejected')} className="text-red-600">
+                                                            <XCircle className="mr-2 h-4 w-4" /> Reject
+                                                        </DropdownMenuItem>
+                                                    </>
+                                                )}
+                                                {user.status !== 'pending' && user.status !== 'rejected' && (
+                                                    <DropdownMenuItem onClick={() => handleStatusChange(user.id, 'rejected')} className="text-red-600">
+                                                        <XCircle className="mr-2 h-4 w-4" /> Deactivate
+                                                    </DropdownMenuItem>
+                                                )}
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem onClick={() => handleManageUnits(user)}>
+                                                    <Home className="mr-2 h-4 w-4" /> Manage Units
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => handleManageRoles(user)}>
+                                                    <Crown className="mr-2 h-4 w-4" /> Manage Roles
+                                                </DropdownMenuItem>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem onClick={() => handleDelete(user.id)} className="text-red-600">
+                                                    <Trash2 className="mr-2 h-4 w-4" /> Delete User
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </CardContent>
             </Card>

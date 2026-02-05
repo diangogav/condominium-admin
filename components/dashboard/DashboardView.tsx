@@ -149,7 +149,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-foreground">
+                    <h1 className="text-2xl md:text-3xl font-bold text-foreground">
                         {isFilteredView ? (currentBuildingName || buildingName || 'Building') : 'Dashboard'}
                     </h1>
                     <p className="text-muted-foreground mt-1">
@@ -229,13 +229,13 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                     {/* Residents Tab */}
                     <TabsContent value="residents" className="space-y-4">
                         <Card className="border-border/50 bg-card">
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 pb-2">
                                 <CardTitle className="text-foreground">Residents</CardTitle>
-                                <div className="relative w-64">
+                                <div className="relative w-full sm:w-64">
                                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                     <Input
                                         placeholder="Search residents..."
-                                        className="pl-8"
+                                        className="pl-8 w-full"
                                         value={searchUsers}
                                         onChange={(e) => setSearchUsers(e.target.value)}
                                     />
@@ -252,13 +252,13 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                             <div
                                                 key={user.id}
                                                 onClick={() => router.push(`/payments?user_id=${user.id}`)}
-                                                className={`flex items-center justify-between p-4 border rounded-lg transition-all duration-200 cursor-pointer ${user.role === 'board'
+                                                className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg transition-all duration-200 cursor-pointer gap-4 sm:gap-0 ${user.role === 'board'
                                                     ? 'bg-primary/5 border-primary/20 shadow-sm hover:shadow-md'
                                                     : 'border-border/50 hover:bg-accent/50 hover:shadow-md'
                                                     }`}
                                             >
                                                 <div className="flex items-center gap-4">
-                                                    <div className={`h-10 w-10 rounded-full flex items-center justify-center ${user.role === 'board' ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
+                                                    <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${user.role === 'board' ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
                                                         }`}>
                                                         <Users className="h-5 w-5" />
                                                     </div>
@@ -276,7 +276,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                                         </p>
                                                     </div>
                                                 </div>
-                                                <div className="text-right">
+                                                <div className="text-left sm:text-right pl-14 sm:pl-0">
                                                     <Badge
                                                         variant="outline"
                                                         className={
@@ -300,23 +300,23 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
 
                     <TabsContent value="invoices" className="space-y-4">
                         <Card className="border-border/50 bg-card">
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0 pb-2">
                                 <div className="space-y-1">
                                     <CardTitle className="text-foreground">Recent Invoices</CardTitle>
                                     <p className="text-xs text-muted-foreground font-normal">Manage building debts</p>
                                 </div>
-                                <div className="flex items-center gap-4">
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto">
                                     {(isSuperAdmin || user?.role === 'board') && (
-                                        <Button size="sm" onClick={() => setIsInvoiceDialogOpen(true)} className="gap-2">
+                                        <Button size="sm" onClick={() => setIsInvoiceDialogOpen(true)} className="gap-2 w-full sm:w-auto">
                                             <Plus className="h-4 w-4" />
                                             Create Invoice
                                         </Button>
                                     )}
-                                    <div className="relative w-64">
+                                    <div className="relative w-full sm:w-64">
                                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                         <Input
                                             placeholder="Search invoices..."
-                                            className="pl-8"
+                                            className="pl-8 w-full"
                                             value={searchInvoices}
                                             onChange={(e) => setSearchInvoices(e.target.value)}
                                         />
@@ -333,7 +333,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                         {filteredInvoices.slice(0, 10).map((inv) => (
                                             <div
                                                 key={inv.id}
-                                                className="flex items-center justify-between p-4 border border-border/50 rounded-lg hover:bg-accent/50 transition-all duration-200"
+                                                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-border/50 rounded-lg hover:bg-accent/50 transition-all duration-200 gap-4 sm:gap-0"
                                             >
                                                 <div>
                                                     <p className="font-medium text-foreground">
@@ -343,7 +343,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                                         {inv.unit?.name || 'Unit N/A'} • {inv.year}-{inv.month}
                                                     </p>
                                                 </div>
-                                                <div className="flex items-center gap-4">
+                                                <div className="flex items-center gap-4 justify-between sm:justify-end">
                                                     <p className="font-semibold text-foreground">
                                                         {formatCurrency(inv.amount)}
                                                     </p>
@@ -377,13 +377,13 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                     {/* Payments Tab */}
                     <TabsContent value="payments" className="space-y-4">
                         <Card className="border-border/50 bg-card">
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0 pb-2">
                                 <CardTitle className="text-foreground">Recent Payments</CardTitle>
-                                <div className="relative w-64">
+                                <div className="relative w-full sm:w-64">
                                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                     <Input
                                         placeholder="Search payments..."
-                                        className="pl-8"
+                                        className="pl-8 w-full"
                                         value={searchPayments}
                                         onChange={(e) => setSearchPayments(e.target.value)}
                                     />
@@ -399,7 +399,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                         {filteredPayments.slice(0, 10).map((payment) => (
                                             <div
                                                 key={payment.id}
-                                                className="flex items-center justify-between p-4 border border-border/50 rounded-lg hover:bg-accent/50 transition-all duration-200"
+                                                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-border/50 rounded-lg hover:bg-accent/50 transition-all duration-200 gap-4 sm:gap-0"
                                             >
                                                 <div>
                                                     <p className="font-medium text-foreground">
@@ -412,7 +412,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                                         By: {payment.user?.name || 'Unknown'}
                                                     </p>
                                                 </div>
-                                                <div className="flex items-center gap-4">
+                                                <div className="flex items-center gap-4 justify-between sm:justify-end">
                                                     <p className="font-semibold text-foreground">
                                                         {formatCurrency(payment.amount)}
                                                     </p>
@@ -462,7 +462,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                 {payments.slice(0, 5).map((payment) => (
                                     <div
                                         key={payment.id}
-                                        className="flex items-center justify-between p-4 border border-border/50 rounded-lg hover:bg-accent/50 transition-all duration-200"
+                                        className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-border/50 rounded-lg hover:bg-accent/50 transition-all duration-200 gap-4 sm:gap-0"
                                     >
                                         <div>
                                             <p className="font-medium text-foreground">
@@ -472,7 +472,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                                 {payment.period} • {payment.method}
                                             </p>
                                         </div>
-                                        <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-4 justify-between sm:justify-end">
                                             <p className="font-semibold text-foreground">
                                                 {formatCurrency(payment.amount)}
                                             </p>

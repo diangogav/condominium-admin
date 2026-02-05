@@ -44,7 +44,7 @@ export function Header() {
     };
 
     return (
-        <header className="h-16 border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between px-6 lg:px-8 shadow-sm">
+        <header className="h-16 border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between pl-16 pr-6 lg:px-8 shadow-sm">
             {/* Building Selector for multi-building boards */}
             {(isSuperAdmin || isBoardMember) && getBoardBuildings().length > 1 && (
                 <BuildingSelector
