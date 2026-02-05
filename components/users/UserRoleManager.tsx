@@ -16,7 +16,7 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { usersService } from '@/lib/services/users.service';
 import { toast } from 'sonner';
-import { Crown, ArrowUp, ArrowDown, User, Building2, Loader2, Home } from 'lucide-react';
+import { Crown, ArrowUp, ArrowDown, User as UserIcon, Building2, Loader2, Home } from 'lucide-react';
 import type { User, UserUnit } from '@/types/models';
 
 interface UserRoleManagerProps {
@@ -144,7 +144,7 @@ export function UserRoleManager({ open, onOpenChange, user, onSuccess }: UserRol
             default:
                 return {
                     className: 'bg-muted/50 text-muted-foreground border-border/50',
-                    icon: User,
+                    icon: UserIcon,
                     label: '👤 Resident'
                 };
         }
