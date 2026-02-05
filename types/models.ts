@@ -8,7 +8,7 @@ export interface UserUnit {
     unit_id: string;
     building_id: string;
     role: 'owner' | 'resident';
-    building_role?: 'board' | 'resident' | 'owner';
+    building_role: 'board' | 'resident' | 'owner'; // Required - determines building-level permissions
     is_primary: boolean;
     // Helper fields for UI (might be enriched by frontend)
     name?: string;
@@ -98,6 +98,14 @@ export interface InvoicePayment extends Payment {
     allocated_amount: number;
     allocation_id: string;
     allocated_at: string;
+}
+
+export interface PaymentSummary {
+    solvency_status: string; // "SOLVENTE" | "MOROSO"
+    last_payment_date?: string;
+    pending_periods?: string[];
+    paid_periods?: string[];
+    recent_transactions: Payment[];
 }
 
 export interface DashboardStats {
@@ -201,4 +209,12 @@ export interface UnitBalance {
     totalDebt: number;
     pendingInvoices: number;
     details: UnitInvoice[];
+}
+
+// DTOs for Unit Management
+// POST /users/:id/units - Handles both create and update
+export interface AssignUnitDto {
+    unit_id: string; // Backend uses snake_case
+    building_role: 'board' | 'resident' | 'owner';
+    is_primary: boolean; // Backend uses snake_case
 }

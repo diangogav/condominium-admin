@@ -24,13 +24,18 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { MoreHorizontal, Edit, Trash2, CheckCircle, XCircle, Building2 } from 'lucide-react';
+import { MoreHorizontal, Edit, Trash2, CheckCircle, XCircle, Building2, Crown, Home } from 'lucide-react';
 import { UserDialog } from '@/components/users/UserDialog';
+import { UserRoleManager } from '@/components/users/UserRoleManager';
+import { UserUnitsManager } from '@/components/users/UserUnitsManager';
+import { BuildingRoleBadge } from '@/components/users/BuildingRoleBadge';
 import { formatUserRole } from '@/lib/utils/format';
-import type { User, Building, Unit } from '@/types/models';
+import type { User, Building, Unit, UserUnit } from '@/types/models';
+import { useBuildingContext } from '@/lib/contexts/BuildingContext';
 
 export default function UsersPage() {
     const { isSuperAdmin, isBoardMember, user: currentUser, buildingId } = usePermissions();
+    const { availableBuildings } = useBuildingContext();
     const [users, setUsers] = useState<User[]>([]);
     const [buildings, setBuildings] = useState<Building[]>([]);
     const [units, setUnits] = useState<Unit[]>([]); // Added units state
@@ -44,6 +49,10 @@ export default function UsersPage() {
     // Dialog state
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
+    const [isRoleManagerOpen, setIsRoleManagerOpen] = useState(false);
+    const [roleManagerUser, setRoleManagerUser] = useState<User | null>(null);
+    const [isUnitsManagerOpen, setIsUnitsManagerOpen] = useState(false);
+    const [unitsManagerUser, setUnitsManagerUser] = useState<User | null>(null);
 
     const fetchData = useCallback(async () => {
         try {
@@ -66,7 +75,15 @@ export default function UsersPage() {
 
             const promises: Promise<any>[] = [
                 usersService.getUsers(query),
-                isSuperAdmin ? buildingsService.getBuildings() : Promise.resolve([])
+                isSuperAdmin
+                    ? buildingsService.getBuildings()
+                    : Promise.resolve(availableBuildings.map(b => ({
+                        id: b.id,
+                        name: b.name || 'Unknown Building',
+                        // Mock fields to satisfy Building type
+                        address: '',
+                        total_units: 0
+                    })))
             ];
 
             if (activeBuildingId) {
@@ -77,7 +94,43 @@ export default function UsersPage() {
 
             const [usersData, buildingsData, unitsData] = await Promise.all(promises);
 
-            setUsers(usersData);
+            // Enrich users with building and unit names
+            const enrichedUsers = await Promise.all(
+                usersData.map(async (user: User) => {
+                    if (!user.units || user.units.length === 0) {
+                        return user;
+                    }
+
+                    // Enrich each unit with building_name and unit name
+                    const enrichedUnits = await Promise.all(
+                        user.units.map(async (unit: UserUnit) => {
+                            const building = buildingsData.find((b: Building) => b.id === unit.building_id);
+
+                            // Fetch unit details to get unit name
+                            let unitDetails = null;
+                            try {
+                                const buildingUnits = await unitsService.getUnits(unit.building_id);
+                                unitDetails = buildingUnits.find(u => u.id === unit.unit_id);
+                            } catch (error) {
+                                console.error(`Failed to fetch units for building ${unit.building_id}:`, error);
+                            }
+
+                            return {
+                                ...unit,
+                                building_name: building?.name || 'Unknown Building',
+                                name: unitDetails?.name || unit.unit_id.slice(0, 8)
+                            };
+                        })
+                    );
+
+                    return {
+                        ...user,
+                        units: enrichedUnits
+                    };
+                })
+            );
+
+            setUsers(enrichedUsers);
             setBuildings(buildingsData);
             setUnits(unitsData);
         } catch (error) {
@@ -95,6 +148,16 @@ export default function UsersPage() {
     const handleEdit = (user: User) => {
         setSelectedUser(user);
         setIsDialogOpen(true);
+    };
+
+    const handleManageRoles = (user: User) => {
+        setRoleManagerUser(user);
+        setIsRoleManagerOpen(true);
+    };
+
+    const handleManageUnits = (user: User) => {
+        setUnitsManagerUser(user);
+        setIsUnitsManagerOpen(true);
     };
 
     const handleDelete = async (userId: string) => {
@@ -123,17 +186,6 @@ export default function UsersPage() {
             console.error(error);
             toast.error(`Failed to update user status`);
         }
-    };
-
-    const getUnitNames = (user: User) => {
-        if (user.units && user.units.length > 0) {
-            return user.units.map(u => u.name).join(', ');
-        }
-        if (user.unit_id && units.length > 0) {
-            const unit = units.find(u => u.id === user.unit_id);
-            if (unit) return unit.name;
-        }
-        return user.unit; // Fallback
     };
 
     return (
@@ -216,7 +268,7 @@ export default function UsersPage() {
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">User</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Role</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Building</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Units & Buildings</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                                 </tr>
@@ -236,19 +288,47 @@ export default function UsersPage() {
                                     </tr>
                                 ) : (
                                     users.map((user) => {
-                                        const unitName = getUnitNames(user);
                                         return (
                                             <tr key={user.id} className="hover:bg-accent/50 transition-colors">
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="text-sm font-medium text-foreground">{user.name}</div>
                                                     <div className="text-sm text-muted-foreground">{user.email}</div>
-                                                    {unitName && <div className="text-xs text-muted-foreground">Units: {unitName}</div>}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <Badge variant="outline">{formatUserRole(user.role)}</Badge>
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                                                    {user.building?.name || user.building_name || 'N/A'}
+                                                <td className="px-6 py-4">
+                                                    {user.units && user.units.length > 0 ? (
+                                                        <div className="space-y-1.5 max-w-md">
+                                                            {user.units.map((unit) => (
+                                                                <div
+                                                                    key={unit.unit_id}
+                                                                    className="flex items-center gap-2 text-xs p-1.5 rounded-md bg-background/50 border border-border/30"
+                                                                >
+                                                                    <Building2 className="h-3 w-3 text-primary flex-shrink-0" />
+                                                                    <span className="font-medium text-foreground">
+                                                                        {unit.building_name || 'Unknown Building'}
+                                                                    </span>
+                                                                    <span className="text-muted-foreground">→</span>
+                                                                    <Home className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                                                    <span className="text-foreground">
+                                                                        {unit.name || unit.unit_id.slice(0, 8)}
+                                                                    </span>
+                                                                    {unit.is_primary && (
+                                                                        <Badge className="text-[9px] h-4 px-1 bg-amber-500/20 text-amber-300 border-amber-500/30">
+                                                                            ★ Primary
+                                                                        </Badge>
+                                                                    )}
+                                                                    <BuildingRoleBadge
+                                                                        buildingRole={unit.building_role}
+                                                                        className="text-[9px] h-4 px-1.5"
+                                                                    />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground italic">No units assigned</span>
+                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <Badge variant={
@@ -289,6 +369,13 @@ export default function UsersPage() {
                                                                 </DropdownMenuItem>
                                                             )}
                                                             <DropdownMenuSeparator />
+                                                            <DropdownMenuItem onClick={() => handleManageUnits(user)}>
+                                                                <Home className="mr-2 h-4 w-4" /> Manage Units
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => handleManageRoles(user)}>
+                                                                <Crown className="mr-2 h-4 w-4" /> Manage Roles
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
                                                             <DropdownMenuItem onClick={() => handleDelete(user.id)} className="text-red-600">
                                                                 <Trash2 className="mr-2 h-4 w-4" /> Delete User
                                                             </DropdownMenuItem>
@@ -310,6 +397,22 @@ export default function UsersPage() {
                 onOpenChange={setIsDialogOpen}
                 user={selectedUser}
                 buildings={buildings}
+                onSuccess={fetchData}
+            />
+
+            {/* Units Manager Dialog */}
+            <UserUnitsManager
+                open={isUnitsManagerOpen}
+                onOpenChange={setIsUnitsManagerOpen}
+                user={unitsManagerUser}
+                onSuccess={fetchData}
+            />
+
+            {/* Role Manager Dialog */}
+            <UserRoleManager
+                open={isRoleManagerOpen}
+                onOpenChange={setIsRoleManagerOpen}
+                user={roleManagerUser}
                 onSuccess={fetchData}
             />
         </div>

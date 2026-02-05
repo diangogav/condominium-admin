@@ -40,4 +40,24 @@ export const usersService = {
     async deleteUser(id: string): Promise<void> {
         await apiClient.delete(`/users/${id}`);
     },
+
+    // Unit Management
+    // POST /users/:id/units - Handles both assign new unit AND update existing unit
+    // If unit already exists for user, it updates the building_role
+    // If unit doesn't exist, it creates the assignment
+    async assignOrUpdateUnit(userId: string, payload: import('@/types/models').AssignUnitDto): Promise<{ success: boolean }> {
+        const { data } = await apiClient.post<{ success: boolean }>(`/users/${userId}/units`, payload);
+        return data;
+    },
+
+    // GET /users/:id/units - View all units for a user
+    async getUserUnits(userId: string): Promise<import('@/types/models').UserUnit[]> {
+        const { data } = await apiClient.get<import('@/types/models').UserUnit[]>(`/users/${userId}/units`);
+        return data;
+    },
+
+    // DELETE /users/:id/units/:unitId - Remove unit assignment
+    async removeUnit(userId: string, unitId: string): Promise<void> {
+        await apiClient.delete(`/users/${userId}/units/${unitId}`);
+    },
 };
