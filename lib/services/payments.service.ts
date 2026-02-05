@@ -1,7 +1,41 @@
 import { apiClient } from '@/lib/api/client';
-import type { Payment, UpdatePaymentDto } from '@/types/models';
+import type { Payment, UpdatePaymentDto, PaymentSummary } from '@/types/models';
 
 export const paymentsService = {
+    // Admin endpoints
+    async getAdminPayments(params?: {
+        building_id?: string;
+        status?: string;
+        period?: string;
+        year?: string;
+        unit_id?: string;
+    }): Promise<Payment[]> {
+        const { data } = await apiClient.get<Payment[]>('/payments/admin/payments', { params });
+        return data.map(p => ({
+            ...p,
+            amount: Number(p.amount)
+        }));
+    },
+
+    // User endpoints
+    async getUserPayments(params?: {
+        year?: string;
+        unit_id?: string;
+        building_id?: string;
+    }): Promise<Payment[]> {
+        const { data } = await apiClient.get<Payment[]>('/payments', { params });
+        return data.map(p => ({
+            ...p,
+            amount: Number(p.amount)
+        }));
+    },
+
+    async getPaymentSummary(): Promise<PaymentSummary> {
+        const { data } = await apiClient.get<PaymentSummary>('/payments/summary');
+        return data;
+    },
+
+    // Alias for backward compatibility - uses getAdminPayments
     async getPayments(params?: {
         building_id?: string;
         user_id?: string;
@@ -10,17 +44,20 @@ export const paymentsService = {
         period?: string;
         year?: string;
     }): Promise<Payment[]> {
-        // Swagger defines /payments/admin/payments for listing with filters
-        const { data } = await apiClient.get<Payment[]>('/payments/admin/payments', { params });
-        // Ensure amount is number
-        return data.map(p => ({
-            ...p,
-            amount: Number(p.amount)
-        }));
+        return this.getAdminPayments(params);
     },
 
     async getPaymentById(id: string): Promise<Payment> {
         const { data } = await apiClient.get<Payment>(`/payments/${id}`);
+        return data;
+    },
+
+    async createPayment(formData: FormData): Promise<Payment> {
+        const { data } = await apiClient.post<Payment>('/payments', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
         return data;
     },
 
@@ -30,10 +67,17 @@ export const paymentsService = {
     },
 
     async approvePayment(id: string, notes?: string, approved_periods?: string[]): Promise<Payment> {
-        return this.updatePaymentStatus(id, { status: 'APPROVED', notes, approved_periods });
+        return this.updatePaymentStatus(id, {
+            status: 'APPROVED',
+            notes,
+            approved_periods
+        });
     },
 
     async rejectPayment(id: string, notes?: string): Promise<Payment> {
-        return this.updatePaymentStatus(id, { status: 'REJECTED', notes });
+        return this.updatePaymentStatus(id, {
+            status: 'REJECTED',
+            notes
+        });
     },
 };

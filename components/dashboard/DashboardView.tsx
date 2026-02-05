@@ -277,7 +277,16 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                                     </div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <Badge variant="outline" className="capitalize">
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={
+                                                            user.role === 'board'
+                                                                ? 'capitalize bg-gradient-to-r from-purple-500/20 to-indigo-500/20 text-purple-300 border-purple-500/30'
+                                                                : user.role === 'admin'
+                                                                    ? 'capitalize bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border-amber-500/30'
+                                                                    : 'capitalize'
+                                                        }
+                                                    >
                                                         {user.role}
                                                     </Badge>
                                                 </div>
@@ -346,7 +355,13 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                                                     ? 'secondary'
                                                                     : 'destructive'
                                                         }
-                                                        className={inv.status === 'PENDING' ? 'bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20' : ''}
+                                                        className={
+                                                            inv.status === 'PAID'
+                                                                ? 'bg-gradient-to-r from-emerald-500/80 to-green-500/80 hover:from-emerald-600 hover:to-green-600 border-0'
+                                                                : inv.status === 'PENDING'
+                                                                    ? 'bg-gradient-to-r from-amber-500/80 to-orange-500/80 text-white hover:from-amber-600 hover:to-orange-600 border-0'
+                                                                    : 'bg-gradient-to-r from-red-500/80 to-rose-500/80 hover:from-red-600 hover:to-rose-600 border-0'
+                                                        }
                                                     >
                                                         {inv.status}
                                                     </Badge>
@@ -409,6 +424,13 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                                                     ? 'secondary'
                                                                     : 'destructive'
                                                         }
+                                                        className={
+                                                            payment.status === 'APPROVED'
+                                                                ? 'bg-gradient-to-r from-emerald-500/80 to-green-500/80 hover:from-emerald-600 hover:to-green-600 border-0'
+                                                                : payment.status === 'PENDING'
+                                                                    ? 'bg-gradient-to-r from-amber-500/80 to-orange-500/80 text-white hover:from-amber-600 hover:to-orange-600 border-0'
+                                                                    : 'bg-gradient-to-r from-red-500/80 to-rose-500/80 hover:from-red-600 hover:to-rose-600 border-0'
+                                                        }
                                                     >
                                                         {payment.status}
                                                     </Badge>
@@ -461,6 +483,13 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                                         : payment.status === 'PENDING'
                                                             ? 'secondary'
                                                             : 'destructive'
+                                                }
+                                                className={
+                                                    payment.status === 'APPROVED'
+                                                        ? 'bg-gradient-to-r from-emerald-500/80 to-green-500/80 hover:from-emerald-600 hover:to-green-600 border-0'
+                                                        : payment.status === 'PENDING'
+                                                            ? 'bg-gradient-to-r from-amber-500/80 to-orange-500/80 text-white hover:from-amber-600 hover:to-orange-600 border-0'
+                                                            : 'bg-gradient-to-r from-red-500/80 to-rose-500/80 hover:from-red-600 hover:to-rose-600 border-0'
                                                 }
                                             >
                                                 {payment.status}

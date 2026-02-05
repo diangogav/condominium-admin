@@ -47,21 +47,32 @@
 }
 
 :root {
-  --radius: 1rem; /* Greater roundness for modern feel */
+  --radius: 1rem;
+  /* Greater roundness for modern feel */
 
-  /* Modern Fresh Dark Theme - Deep Blue & Vibrant Violet/Blue */
-  --background: #0b0f19; /* Very deep blue/black */
+  /* Vibrant Color Palette - Warmer & More Engaging */
+  --background: #0a0e1a;
+  /* Deep blue-black for depth */
   --foreground: #f8fafc;
 
-  --card: #111827; /* Rich dark gray/blue */
+  --card: #111827;
+  /* Rich dark gray/blue */
   --card-foreground: #f8fafc;
 
   --popover: #111827;
   --popover-foreground: #f8fafc;
 
-  /* Vibrant Indigo/Purple Primary */
-  --primary: #6366f1; /* Indigo 500 */
+  /* Vibrant Gradient Primary - Purple to Indigo */
+  --primary: #6366f1;
+  /* Indigo 500 base */
   --primary-foreground: #ffffff;
+
+  /* Gradient definitions for use in components */
+  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --gradient-warning: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  --gradient-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  --gradient-info: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
 
   --secondary: #1e293b;
   --secondary-foreground: #f8fafc;
@@ -70,7 +81,8 @@
   --muted-foreground: #94a3b8;
 
   --accent: #1e293b;
-  --accent-foreground: #818cf8; /* Indigo 400 */
+  --accent-foreground: #818cf8;
+  /* Indigo 400 */
 
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
@@ -79,11 +91,17 @@
   --input: #1f2937;
   --ring: #6366f1;
 
-  --chart-1: #6366f1;
-  --chart-2: #8b5cf6;
-  --chart-3: #10b981;
-  --chart-4: #f43f5e;
-  --chart-5: #0ea5e9;
+  /* Vibrant Chart Colors */
+  --chart-1: #10b981;
+  /* Emerald - Success */
+  --chart-2: #f59e0b;
+  /* Amber - Warning */
+  --chart-3: #3b82f6;
+  /* Blue - Info */
+  --chart-4: #ec4899;
+  /* Pink - Accent */
+  --chart-5: #8b5cf6;
+  /* Purple - Featured */
 
   --sidebar: #020617;
   --sidebar-foreground: #f8fafc;
@@ -101,23 +119,76 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
+    @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary-foreground;
   }
-  
-  /* Modern scrollbar */
+
+  /* Modern scrollbar with vibrant accent */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
+
   ::-webkit-scrollbar-track {
     @apply bg-transparent;
   }
+
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/30 transition-colors;
+    @apply bg-primary/20 rounded-full hover:bg-primary/30 transition-colors;
   }
 
-  /* Smooth transitions */
-  a, button, [role="button"], input, select, textarea {
+  /* Smooth transitions with micro-animations */
+  a,
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea {
     @apply transition-all duration-200 ease-in-out;
+  }
+
+  /* Vibrant focus states */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply ring-2 ring-primary ring-offset-2 ring-offset-background outline-none;
+  }
+
+  /* Enhanced hover effects for interactive elements */
+  button:not(:disabled):hover,
+  a:hover {
+    @apply brightness-110 scale-[1.02];
+  }
+
+  /* Gradient text utility */
+  .gradient-text {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Card enhancements */
+  .card-gradient {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+  }
+
+  /* Shimmer animation for loading states */
+  @keyframes shimmer {
+    0% {
+      background-position: -1000px 0;
+    }
+
+    100% {
+      background-position: 1000px 0;
+    }
+  }
+
+  .shimmer {
+    animation: shimmer 2s infinite linear;
+    background: linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%);
+    background-size: 1000px 100%;
   }
 }
