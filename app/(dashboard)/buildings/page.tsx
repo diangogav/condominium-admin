@@ -40,21 +40,23 @@ export default function BuildingsPage() {
     };
 
     useEffect(() => {
-        if (!isSuperAdmin && !isBoardMember && !isLoading) {
-            router.push('/dashboard');
+        // Wait for permissions to be resolved before redirecting
+        if (!isSuperAdmin && !isBoardMember) {
             return;
         }
 
         // Direct redirect for Board Members who don't belong in the global list
-        if (isBoardMember && !isSuperAdmin && currentUser?.building_id) {
-            router.push(`/buildings/${currentUser.building_id}/dashboard`);
+        // Use a more robust check for buildingId matching usePermissions
+        const effectiveBuildingIdForBoard = currentUser?.building_id || currentUser?.building?.id;
+        if (isBoardMember && !isSuperAdmin && effectiveBuildingIdForBoard) {
+            router.push(`/buildings/${effectiveBuildingIdForBoard}/dashboard`);
             return;
         }
 
         if (isSuperAdmin) {
             fetchBuildings();
         }
-    }, [isSuperAdmin, isBoardMember, isLoading, currentUser, router]);
+    }, [isSuperAdmin, isBoardMember, router, (currentUser?.building_id || currentUser?.building?.id)]);
 
     const handleCreate = () => {
         setSelectedBuilding(null);

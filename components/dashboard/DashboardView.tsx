@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { Building2, Users, CreditCard, DollarSign, TrendingUp, ArrowLeft, Search, FileText, Plus } from 'lucide-react';
@@ -44,62 +44,58 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
     const [searchInvoices, setSearchInvoices] = useState('');
     const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                setIsLoading(true);
+    const fetchData = useCallback(async () => {
+        try {
+            setIsLoading(true);
 
-                // Prepare filters
-                const query: any = effectiveBuildingId ? { building_id: effectiveBuildingId } : {};
+            // Prepare filters
+            const query: any = effectiveBuildingId ? { building_id: effectiveBuildingId } : {};
 
-                // Just fetch recent/all invoices. For super admin global this might be heavy, 
-                // but the endpoint now supports it.
-                // We'll limit strictly by building if selected.
+            const promises: [Promise<Building[]>, Promise<User[]>, Promise<Payment[]>, Promise<Invoice[]>] = [
+                isSuperAdmin ? buildingsService.getBuildings() : Promise.resolve([]),
+                usersService.getUsers(query),
+                paymentsService.getPayments(query),
+                billingService.getInvoices(query)
+            ];
 
-                const promises: [Promise<Building[]>, Promise<User[]>, Promise<Payment[]>, Promise<Invoice[]>] = [
-                    isSuperAdmin ? buildingsService.getBuildings() : Promise.resolve([]),
-                    usersService.getUsers(query),
-                    paymentsService.getPayments(query),
-                    billingService.getInvoices(query)
-                ];
+            const [buildingsData, usersData, paymentsData, invoicesData] = await Promise.all(promises);
 
-                const [buildingsData, usersData, paymentsData, invoicesData] = await Promise.all(promises);
+            setBuildings(buildingsData);
+            setUsers(usersData);
+            setPayments(paymentsData);
+            setInvoices(invoicesData);
 
-                setBuildings(buildingsData);
-                setUsers(usersData);
-                setPayments(paymentsData);
-                setInvoices(invoicesData);
-
-                if (effectiveBuildingId) {
-                    // Try to find in profile first
-                    if (!isSuperAdmin && user?.building_name) {
-                        setCurrentBuildingName(user.building_name);
+            if (effectiveBuildingId) {
+                // Try to find in profile first
+                if (!isSuperAdmin && user?.building_name) {
+                    setCurrentBuildingName(user.building_name);
+                } else {
+                    // Check if we have it in buildingsData (Super Admin list)
+                    const b = buildingsData.find(b => b.id === effectiveBuildingId);
+                    if (b) {
+                        setCurrentBuildingName(b.name);
                     } else {
-                        // Check if we have it in buildingsData (Super Admin list)
-                        const b = buildingsData.find(b => b.id === effectiveBuildingId);
-                        if (b) {
-                            setCurrentBuildingName(b.name);
-                        } else {
-                            // Fetch directly if still missing
-                            try {
-                                const specificBuilding = await buildingsService.getBuildingById(effectiveBuildingId);
-                                setCurrentBuildingName(specificBuilding.name);
-                            } catch (e) {
-                                console.error('Failed to fetch building details', e);
-                            }
+                        // Fetch directly if still missing
+                        try {
+                            const specificBuilding = await buildingsService.getBuildingById(effectiveBuildingId);
+                            setCurrentBuildingName(specificBuilding.name);
+                        } catch (e) {
+                            console.error('Failed to fetch building details', e);
                         }
                     }
                 }
-
-            } catch (error) {
-                console.error('Failed to fetch dashboard data:', error);
-            } finally {
-                setIsLoading(false);
             }
-        };
 
-        fetchData();
+        } catch (error) {
+            console.error('Failed to fetch dashboard data:', error);
+        } finally {
+            setIsLoading(false);
+        }
     }, [isSuperAdmin, user, effectiveBuildingId]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     if (isLoading) {
         return (
@@ -114,14 +110,8 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
     const totalRevenue = approvedPayments.reduce((sum, p) => sum + p.amount, 0);
 
     // Debt Calculation
-    // Filter for PENDING. If we want to include other statuses like 'OVERDUE' ensure it is in the type definition.
-    // For now, only 'PENDING' is the active debt indicator in the known types.
     const pendingInvoices = invoices.filter(i => i.status === 'PENDING');
     const totalDebt = pendingInvoices.reduce((sum, i) => sum + (i.amount - (i.paid_amount || 0)), 0);
-
-    const solvencyRate = users.length > 0
-        ? Math.round((users.filter(u => u.status === 'active').length / users.length) * 100) // Rough proxy, ideally checking debt
-        : 0;
 
     const isFilteredView = !!effectiveBuildingId;
 
@@ -310,6 +300,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                             placeholder="Search invoices..."
                                             className="pl-8"
                                             value={searchInvoices}
+                                            onChange={(e) => setSearchInvoices(e.target.value)}
                                         />
                                     </div>
                                 </div>
@@ -477,9 +468,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
             <InvoiceDialog
                 open={isInvoiceDialogOpen}
                 onOpenChange={setIsInvoiceDialogOpen}
-                onSuccess={() => {
-                    window.location.reload();
-                }}
+                onSuccess={fetchData}
             />
         </div>
     );

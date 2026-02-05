@@ -6,10 +6,15 @@ export function usePermissions() {
     const { user } = useAuth();
 
     const isSuperAdmin = user?.role === 'admin';
-    const buildingId = user?.building_id || (user?.units && user?.units.length > 0 ? user.units[0].building_id : undefined);
-    const buildingName = user?.building_name || user?.building?.name || (user?.units && user?.units.length > 0 ? user.units[0].building_name : undefined);
+    const buildingId = user?.building_id ||
+        user?.building?.id ||
+        (user?.units && user?.units.length > 0 ? user.units[0].building_id : undefined);
 
-    const isBoardMember = user?.role === 'board' || (user?.role === 'admin' && !!buildingId);
+    const buildingName = user?.building_name ||
+        user?.building?.name ||
+        (user?.units && user?.units.length > 0 ? user.units[0].building_name : undefined);
+
+    const isBoardMember = user?.role === 'board';
     const isResident = user?.role === 'resident';
 
     const canManageBuildings = isSuperAdmin;
