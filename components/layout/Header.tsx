@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@/lib/hooks/useAuth';
+import { usePermissions } from '@/lib/hooks/usePermissions';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
     DropdownMenu,
@@ -14,7 +15,8 @@ import { LogOut, User } from 'lucide-react';
 import { formatUserRole } from '@/lib/utils/format';
 
 export function Header() {
-    const { user, logout } = useAuth();
+    const { logout } = useAuth();
+    const { user, displayName, buildingName, isBoardMember } = usePermissions();
 
     const getInitials = (name: string) => {
         return name
@@ -30,19 +32,22 @@ export function Header() {
             <DropdownMenu>
                 <DropdownMenuTrigger className="flex items-center gap-3 hover:bg-accent/50 rounded-lg px-3 py-2 transition-all duration-200 outline-none focus:ring-2 focus:ring-primary/20">
                     <div className="text-right hidden sm:block">
-                        <p className="text-sm font-medium text-foreground">{user?.name}</p>
-                        <p className="text-xs text-muted-foreground">{user?.role && formatUserRole(user.role)}</p>
+                        <p className="text-sm font-medium text-foreground">{displayName}</p>
+                        <p className="text-xs text-muted-foreground">
+                            {user?.role && formatUserRole(user.role)}
+                            {isBoardMember && buildingName && ` • ${buildingName}`}
+                        </p>
                     </div>
                     <Avatar className="h-9 w-9 border-2 border-primary/20 transition-all hover:border-primary">
                         <AvatarFallback className="bg-primary/10 text-primary font-bold">
-                            {user?.name ? getInitials(user.name) : 'U'}
+                            {displayName ? getInitials(displayName) : 'U'}
                         </AvatarFallback>
                     </Avatar>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 bg-card border-border shadow-xl">
                     <DropdownMenuLabel>
                         <div>
-                            <p className="font-medium text-foreground">{user?.name}</p>
+                            <p className="font-medium text-foreground">{displayName}</p>
                             <p className="text-xs text-muted-foreground font-normal">{user?.email}</p>
                         </div>
                     </DropdownMenuLabel>

@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { StatsCard } from '@/components/dashboard/StatsCard';
-import { Building2, Users, CreditCard, DollarSign, TrendingUp, ArrowLeft, Search } from 'lucide-react';
+import { Building2, Users, CreditCard, DollarSign, TrendingUp, ArrowLeft, Search, FileText, Plus } from 'lucide-react';
+import { InvoiceDialog } from '@/components/billing/InvoiceDialog';
 import { UnitsTab } from '@/components/buildings/UnitsTab';
 import { buildingsService } from '@/lib/services/buildings.service';
 import { usersService } from '@/lib/services/users.service';
 import { paymentsService } from '@/lib/services/payments.service';
-import { formatCurrency } from '@/lib/utils/format';
+import { billingService } from '@/lib/services/billing.service';
+import { formatCurrency, formatDate } from '@/lib/utils/format';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,32 +18,31 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import type { Building, User, Payment } from '@/types/models';
+import type { Building, User, Payment, Invoice } from '@/types/models';
 
 interface DashboardViewProps {
     buildingId?: string;
-    showBuildingFilter?: boolean; // For global dashboard to allow filtering or showing all
+    showBuildingFilter?: boolean;
 }
 
 export function DashboardView({ buildingId, showBuildingFilter = false }: DashboardViewProps) {
-    const { isSuperAdmin, user } = usePermissions();
+    const { isSuperAdmin, user, buildingId: permissionsBuildingId, buildingName } = usePermissions();
     const router = useRouter();
 
-    // effectiveBuildingId: 
-    // If passed buildingId (e.g. from route), use it.
-    // Else if user is not super admin, use their building_id.
-    // If super admin and no buildingId passed, it's global view (undefined).
-    const effectiveBuildingId = buildingId || (!isSuperAdmin ? user?.building_id : undefined);
+    const effectiveBuildingId = buildingId || (!isSuperAdmin ? permissionsBuildingId : undefined);
 
     const [buildings, setBuildings] = useState<Building[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [payments, setPayments] = useState<Payment[]>([]);
+    const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [currentBuildingName, setCurrentBuildingName] = useState<string>('');
 
     // Search State
     const [searchUsers, setSearchUsers] = useState('');
     const [searchPayments, setSearchPayments] = useState('');
+    const [searchInvoices, setSearchInvoices] = useState('');
+    const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -49,36 +50,45 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                 setIsLoading(true);
 
                 // Prepare filters
-                const query = effectiveBuildingId ? { building_id: effectiveBuildingId } : {};
+                const query: any = effectiveBuildingId ? { building_id: effectiveBuildingId } : {};
 
-                const promises: [Promise<Building[]>, Promise<User[]>, Promise<Payment[]>] = [
+                // Just fetch recent/all invoices. For super admin global this might be heavy, 
+                // but the endpoint now supports it.
+                // We'll limit strictly by building if selected.
+
+                const promises: [Promise<Building[]>, Promise<User[]>, Promise<Payment[]>, Promise<Invoice[]>] = [
                     isSuperAdmin ? buildingsService.getBuildings() : Promise.resolve([]),
                     usersService.getUsers(query),
                     paymentsService.getPayments(query),
+                    billingService.getInvoices(query)
                 ];
 
-                const [buildingsData, usersData, paymentsData] = await Promise.all(promises);
+                const [buildingsData, usersData, paymentsData, invoicesData] = await Promise.all(promises);
 
                 setBuildings(buildingsData);
                 setUsers(usersData);
                 setPayments(paymentsData);
+                setInvoices(invoicesData);
 
-                if (effectiveBuildingId && isSuperAdmin) {
-                    // Try to find name in fetched buildings if available, otherwise might need to fetch single building
-                    const b = buildingsData.find(b => b.id === effectiveBuildingId);
-                    if (b) {
-                        setCurrentBuildingName(b.name);
+                if (effectiveBuildingId) {
+                    // Try to find in profile first
+                    if (!isSuperAdmin && user?.building_name) {
+                        setCurrentBuildingName(user.building_name);
                     } else {
-                        // Fallback: fetch specific building if not in list (though list should have it)
-                        try {
-                            const specificBuilding = await buildingsService.getBuildingById(effectiveBuildingId);
-                            setCurrentBuildingName(specificBuilding.name);
-                        } catch (e) {
-                            console.error('Failed to fetch building details', e);
+                        // Check if we have it in buildingsData (Super Admin list)
+                        const b = buildingsData.find(b => b.id === effectiveBuildingId);
+                        if (b) {
+                            setCurrentBuildingName(b.name);
+                        } else {
+                            // Fetch directly if still missing
+                            try {
+                                const specificBuilding = await buildingsService.getBuildingById(effectiveBuildingId);
+                                setCurrentBuildingName(specificBuilding.name);
+                            } catch (e) {
+                                console.error('Failed to fetch building details', e);
+                            }
                         }
                     }
-                } else if (!isSuperAdmin && user?.building_name) {
-                    setCurrentBuildingName(user.building_name);
                 }
 
             } catch (error) {
@@ -102,8 +112,15 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
     const pendingPayments = payments.filter(p => p.status === 'PENDING');
     const approvedPayments = payments.filter(p => p.status === 'APPROVED');
     const totalRevenue = approvedPayments.reduce((sum, p) => sum + p.amount, 0);
+
+    // Debt Calculation
+    // Filter for PENDING. If we want to include other statuses like 'OVERDUE' ensure it is in the type definition.
+    // For now, only 'PENDING' is the active debt indicator in the known types.
+    const pendingInvoices = invoices.filter(i => i.status === 'PENDING');
+    const totalDebt = pendingInvoices.reduce((sum, i) => sum + (i.amount - (i.paid_amount || 0)), 0);
+
     const solvencyRate = users.length > 0
-        ? Math.round((approvedPayments.length / users.length) * 100)
+        ? Math.round((users.filter(u => u.status === 'active').length / users.length) * 100) // Rough proxy, ideally checking debt
         : 0;
 
     const isFilteredView = !!effectiveBuildingId;
@@ -122,12 +139,19 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
         payment.user?.name.toLowerCase().includes(searchPayments.toLowerCase())
     );
 
+    const filteredInvoices = invoices.filter(inv =>
+        searchInvoices === '' ||
+        inv.number?.toLowerCase().includes(searchInvoices.toLowerCase()) ||
+        inv.user?.name?.toLowerCase().includes(searchInvoices.toLowerCase()) ||
+        inv.unit?.name?.toLowerCase().includes(searchInvoices.toLowerCase())
+    );
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold text-foreground">
-                        {isFilteredView ? `${currentBuildingName || 'Building'} Dashboard` : 'Dashboard'}
+                        {isFilteredView ? (currentBuildingName || buildingName || 'Building') : 'Dashboard'}
                     </h1>
                     <p className="text-muted-foreground mt-1">
                         {isFilteredView
@@ -137,8 +161,6 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                     </p>
                 </div>
                 {isFilteredView && isSuperAdmin && showBuildingFilter && (
-                    // If we are in global dashboard but filtered, show back button.
-                    // But if we are in dedicated building dashboard, maybe show "Back to Buildings"?
                     <Button variant="outline" onClick={() => router.push('/dashboard')} className="gap-2">
                         <ArrowLeft className="h-4 w-4" />
                         Back to Overview
@@ -172,24 +194,25 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                     description={isFilteredView ? 'In this building' : 'All users'}
                 />
                 <StatsCard
+                    title="Total Debt"
+                    value={formatCurrency(totalDebt)}
+                    icon={FileText}
+                    description={`${pendingInvoices.length} pending invoices`}
+                    className="border-red-500/20 bg-red-500/5"
+                />
+                <StatsCard
                     title="Pending Payments"
                     value={pendingPayments.length}
                     icon={CreditCard}
                     description="Awaiting approval"
+                    className="border-yellow-500/20 bg-yellow-500/5"
                 />
-                {(!isFilteredView && isSuperAdmin) ? (
+                {(!isFilteredView && isSuperAdmin) && (
                     <StatsCard
                         title="Total Revenue"
                         value={formatCurrency(totalRevenue)}
                         icon={DollarSign}
-                        description="Current month"
-                    />
-                ) : (
-                    <StatsCard
-                        title="Solvency Rate"
-                        value={`${solvencyRate}%`}
-                        icon={TrendingUp}
-                        description="Residents up-to-date"
+                        description="Verified collections"
                     />
                 )}
             </div>
@@ -198,8 +221,9 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
             {isFilteredView ? (
                 <Tabs defaultValue="residents" className="space-y-4">
                     <TabsList>
-                        <TabsTrigger value="residents">Building Residents</TabsTrigger>
-                        <TabsTrigger value="payments">Recent Payments</TabsTrigger>
+                        <TabsTrigger value="residents">Residents</TabsTrigger>
+                        <TabsTrigger value="invoices">Invoices</TabsTrigger>
+                        <TabsTrigger value="payments">Payments</TabsTrigger>
                         <TabsTrigger value="units">Units</TabsTrigger>
                     </TabsList>
 
@@ -207,7 +231,7 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                     <TabsContent value="residents" className="space-y-4">
                         <Card className="border-border/50 bg-card">
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-foreground">Building Residents</CardTitle>
+                                <CardTitle className="text-foreground">Residents</CardTitle>
                                 <div className="relative w-64">
                                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                     <Input
@@ -256,6 +280,75 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                                                 <div className="text-right">
                                                     <Badge variant="outline" className="capitalize">
                                                         {user.role}
+                                                    </Badge>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="invoices" className="space-y-4">
+                        <Card className="border-border/50 bg-card">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <div className="space-y-1">
+                                    <CardTitle className="text-foreground">Recent Invoices</CardTitle>
+                                    <p className="text-xs text-muted-foreground font-normal">Manage building debts</p>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    {(isSuperAdmin || user?.role === 'board') && (
+                                        <Button size="sm" onClick={() => setIsInvoiceDialogOpen(true)} className="gap-2">
+                                            <Plus className="h-4 w-4" />
+                                            Create Invoice
+                                        </Button>
+                                    )}
+                                    <div className="relative w-64">
+                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Search invoices..."
+                                            className="pl-8"
+                                            value={searchInvoices}
+                                        />
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                {filteredInvoices.length === 0 ? (
+                                    <p className="text-muted-foreground text-center py-8">
+                                        No invoices found.
+                                    </p>
+                                ) : (
+                                    <div className="space-y-4 pt-4">
+                                        {filteredInvoices.slice(0, 10).map((inv) => (
+                                            <div
+                                                key={inv.id}
+                                                className="flex items-center justify-between p-4 border border-border/50 rounded-lg hover:bg-accent/50 transition-all duration-200"
+                                            >
+                                                <div>
+                                                    <p className="font-medium text-foreground">
+                                                        Invoice #{inv.number || inv.id.slice(0, 8)}
+                                                    </p>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {inv.unit?.name || 'Unit N/A'} • {inv.year}-{inv.month}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-4">
+                                                    <p className="font-semibold text-foreground">
+                                                        {formatCurrency(inv.amount)}
+                                                    </p>
+                                                    <Badge
+                                                        variant={
+                                                            inv.status === 'PAID'
+                                                                ? 'default'
+                                                                : inv.status === 'PENDING'
+                                                                    ? 'secondary'
+                                                                    : 'destructive'
+                                                        }
+                                                        className={inv.status === 'PENDING' ? 'bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20' : ''}
+                                                    >
+                                                        {inv.status}
                                                     </Badge>
                                                 </div>
                                             </div>
@@ -380,6 +473,14 @@ export function DashboardView({ buildingId, showBuildingFilter = false }: Dashbo
                     </CardContent>
                 </Card>
             )}
+
+            <InvoiceDialog
+                open={isInvoiceDialogOpen}
+                onOpenChange={setIsInvoiceDialogOpen}
+                onSuccess={() => {
+                    window.location.reload();
+                }}
+            />
         </div>
     );
 }

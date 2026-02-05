@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { paymentsService } from '@/lib/services/payments.service';
 import { buildingsService } from '@/lib/services/buildings.service';
-import { unitsService } from '@/lib/services/units.service'; // Added
+import { unitsService } from '@/lib/services/units.service';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,65 +20,70 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
 } from '@/components/ui/dialog';
 import type { Payment, Building, Unit } from '@/types/models';
 import { formatCurrency, formatDate, formatPaymentMethod } from '@/lib/utils/format';
 import { toast } from 'sonner';
 import { usePermissions } from '@/lib/hooks/usePermissions';
-import { Eye, CheckCircle, XCircle } from 'lucide-react';
+import { Eye, CheckCircle, XCircle, Info, Building2 } from 'lucide-react';
 import Image from 'next/image';
 
 import { useSearchParams } from 'next/navigation';
 
 export default function PaymentsPage() {
-    const { isSuperAdmin, user } = usePermissions();
+    const { isSuperAdmin, isBoardMember, user, buildingId } = usePermissions();
     const searchParams = useSearchParams();
     const userIdParam = searchParams.get('user_id');
 
     const [payments, setPayments] = useState<Payment[]>([]);
     const [buildings, setBuildings] = useState<Building[]>([]);
-    const [units, setUnits] = useState<Unit[]>([]); // Added
+    const [units, setUnits] = useState<Unit[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     // Filters
     const [filterBuildingId, setFilterBuildingId] = useState<string>('all');
-    const [filterUnitId, setFilterUnitId] = useState<string>('all'); // Added
+    const [filterUnitId, setFilterUnitId] = useState<string>('all');
     const [filterStatus, setFilterStatus] = useState<string>('all');
     const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString());
-    const [filterPeriod, setFilterPeriod] = useState<string>(''); // Optional period filter
+    const [filterPeriod, setFilterPeriod] = useState<string>('');
 
     // Proof Dialog
     const [proofUrl, setProofUrl] = useState<string | null>(null);
 
     // Approval Dialog State
-    const [approvalPaymentId, setApprovalPaymentId] = useState<string | null>(null);
+    const [approvalPayment, setApprovalPayment] = useState<Payment | null>(null);
     const [availablePeriods, setAvailablePeriods] = useState<string[]>([]);
     const [selectedPeriods, setSelectedPeriods] = useState<string[]>([]);
+
+    // Allocations for approval preview (if backend provides them on GET or if we simulate)
+    // Actually backend prompt says: "Al revisar un pago (GET /payments/:id), verás... allocations (Real)"
+    // So we don't need to fetch extra, just use the payment object or fetch detailed if list doesn't have it.
+    // The list GET usually returns light objects. Let's fetch detail on open.
+    const [detailedPayment, setDetailedPayment] = useState<Payment | null>(null);
+
 
     const fetchData = useCallback(async () => {
         try {
             setIsLoading(true);
 
             // Determine building ID
-            let buildingId = undefined;
+            let activeBuildingId = undefined;
             if (isSuperAdmin) {
                 if (filterBuildingId && filterBuildingId !== 'all') {
-                    buildingId = filterBuildingId;
+                    activeBuildingId = filterBuildingId;
                 }
             } else {
-                buildingId = user?.building_id;
+                activeBuildingId = buildingId;
             }
 
             const query: Record<string, string> = {};
             if (userIdParam) {
                 query.user_id = userIdParam;
-                // If filtering by user, we might want to ignore other filters or set defaults?
-                // For now, let's allow combining, but user might expect to see ALL history for that user.
-                // Let's loosen year filter if userIdParam is present
                 if (filterYear) query.year = filterYear;
             } else {
-                if (buildingId) query.building_id = buildingId;
-                if (filterUnitId && filterUnitId !== 'all') query.unit_id = filterUnitId; // Added unit_id filter
+                if (activeBuildingId) query.building_id = activeBuildingId;
+                if (filterUnitId && filterUnitId !== 'all') query.unit_id = filterUnitId;
                 if (filterYear) query.year = filterYear;
             }
 
@@ -90,17 +95,22 @@ export default function PaymentsPage() {
                 isSuperAdmin ? buildingsService.getBuildings() : Promise.resolve([])
             ];
 
-            if (buildingId) {
-                promises.push(unitsService.getUnits(buildingId));
+            if (activeBuildingId) {
+                promises.push(unitsService.getUnits(activeBuildingId));
             } else {
                 promises.push(Promise.resolve([]));
             }
 
             const [paymentsData, buildingsData, unitsData] = await Promise.all(promises);
 
-            setPayments(paymentsData);
+            let filteredPayments = paymentsData;
+            if (userIdParam) {
+                filteredPayments = paymentsData.filter((p: Payment) => p.user_id === userIdParam);
+            }
+
+            setPayments(filteredPayments);
             setBuildings(buildingsData);
-            setUnits(unitsData); // Set units
+            setUnits(unitsData);
         } catch (error) {
             console.error('Failed to fetch data:', error);
             toast.error('Failed to fetch payments');
@@ -113,11 +123,24 @@ export default function PaymentsPage() {
         fetchData();
     }, [fetchData]);
 
-    const openApprovalDialog = (payment: Payment) => {
-        setApprovalPaymentId(payment.id);
-        const periods = payment.periods || (payment.period ? [payment.period] : []);
-        setAvailablePeriods(periods);
-        setSelectedPeriods(periods); // Default select all
+    const openApprovalDialog = async (payment: Payment) => {
+        setApprovalPayment(payment);
+        setDetailedPayment(null); // Reset
+
+        try {
+            // Fetch detailed payment to get allocations
+            const detailed = await paymentsService.getPaymentById(payment.id);
+            setDetailedPayment(detailed);
+
+            // Legacy periods support
+            const periods = detailed.periods || (detailed.period ? [detailed.period] : []);
+            setAvailablePeriods(periods);
+            setSelectedPeriods(periods);
+        } catch (e) {
+            console.error("Failed to fetch payment details", e);
+            toast.error("Could not load payment details");
+            setApprovalPayment(null);
+        }
     };
 
     const togglePeriod = (period: string) => {
@@ -129,26 +152,16 @@ export default function PaymentsPage() {
     };
 
     const handleConfirmApprove = async () => {
-        if (!approvalPaymentId) return;
+        if (!approvalPayment) return;
 
         try {
-            // If all periods selected, send undefined to let backend handle default (or send full array)
-            // Backend spec says: "If omitted, all requested periods are approved."
-            // So if selectedPeriods.length === availablePeriods.length, we can pass undefined.
-            // But confirming sending the array is safer if logic is complex.
-            // However, let's follow spec: send array if subset.
-
+            // We pass selected periods if legacy support needs it, otherwise backend uses allocations logic
             const isSubset = selectedPeriods.length < availablePeriods.length;
             const periodsToSend = isSubset ? selectedPeriods : undefined;
 
-            if (selectedPeriods.length === 0) {
-                toast.error('Must select at least one period to approve');
-                return;
-            }
-
-            await paymentsService.approvePayment(approvalPaymentId, undefined, periodsToSend);
+            await paymentsService.approvePayment(approvalPayment.id, undefined, periodsToSend);
             toast.success('Payment approved successfully');
-            setApprovalPaymentId(null);
+            setApprovalPayment(null);
             fetchData();
         } catch (error) {
             console.error(error);
@@ -158,7 +171,7 @@ export default function PaymentsPage() {
 
     const handleReject = async (paymentId: string) => {
         const reason = prompt('Reason for rejection:');
-        if (reason === null) return; // Cancelled
+        if (reason === null) return;
 
         try {
             await paymentsService.rejectPayment(paymentId, reason);
@@ -186,7 +199,7 @@ export default function PaymentsPage() {
                         <div className="w-full md:w-64">
                             <Select value={filterBuildingId} onValueChange={setFilterBuildingId}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Filter by Building" />
+                                    <SelectValue placeholder="All Buildings" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Buildings</SelectItem>
@@ -199,17 +212,23 @@ export default function PaymentsPage() {
                             </Select>
                         </div>
                     )}
+                    {(isBoardMember && !isSuperAdmin) && (
+                        <div className="w-full md:w-64">
+                            <div className="flex items-center px-3 h-10 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground">
+                                <Building2 className="mr-2 h-4 w-4" />
+                                Building Scoped
+                            </div>
+                        </div>
+                    )}
                     <div className="w-full md:w-48">
-                        <Select value={filterUnitId} onValueChange={setFilterUnitId} disabled={!isSuperAdmin && !user?.building_id && filterBuildingId === 'all'}>
+                        <Select value={filterUnitId} onValueChange={setFilterUnitId} disabled={!isSuperAdmin && !buildingId && filterBuildingId === 'all'}>
                             <SelectTrigger>
-                                <SelectValue placeholder="Filter by Unit" />
+                                <SelectValue placeholder="All Units" />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">All Units</SelectItem>
                                 {units.map((u) => (
-                                    <SelectItem key={u.id} value={u.id}>
-                                        {u.name}
-                                    </SelectItem>
+                                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -217,7 +236,7 @@ export default function PaymentsPage() {
                     <div className="w-full md:w-48">
                         <Select value={filterStatus} onValueChange={setFilterStatus}>
                             <SelectTrigger>
-                                <SelectValue placeholder="Filter by Status" />
+                                <SelectValue placeholder="All Statuses" />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">All Statuses</SelectItem>
@@ -235,7 +254,6 @@ export default function PaymentsPage() {
                             <SelectContent>
                                 <SelectItem value="2024">2024</SelectItem>
                                 <SelectItem value="2025">2025</SelectItem>
-                                <SelectItem value="2026">2026</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -258,7 +276,7 @@ export default function PaymentsPage() {
                                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Date</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">User</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Amount</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Periods</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Periods (Info)</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Ref</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Proof</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
@@ -283,11 +301,10 @@ export default function PaymentsPage() {
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                                                 {payment.user?.name || 'Unknown'} <br />
                                                 <span className="text-xs text-muted-foreground">
-                                                    {payment.user?.building_name || ''}
                                                     {(() => {
-                                                        const unitId = payment.user?.unit_id || payment.unit_id;
+                                                        const unitId = payment.unit_id || payment.user?.unit_id;
                                                         const unitName = unitId ? units.find(u => u.id === unitId)?.name : payment.user?.unit;
-                                                        return unitName ? ` Unit ${unitName}` : '';
+                                                        return unitName ? `Unit ${unitName}` : '';
                                                     })()}
                                                 </span>
                                             </td>
@@ -359,7 +376,6 @@ export default function PaymentsPage() {
                     </DialogHeader>
                     {proofUrl && (
                         <div className="relative w-full h-[600px]">
-                            {/* Use standard img tag if external URL not configured in next.config.js, or try Image with unoptimized */}
                             <Image
                                 src={proofUrl}
                                 alt="Payment Proof"
@@ -373,39 +389,100 @@ export default function PaymentsPage() {
             </Dialog>
 
             {/* Approval Dialog */}
-            <Dialog open={!!approvalPaymentId} onOpenChange={(open) => !open && setApprovalPaymentId(null)}>
-                <DialogContent className="sm:max-w-[425px] bg-background">
+            <Dialog open={!!approvalPayment} onOpenChange={(open) => !open && setApprovalPayment(null)}>
+                <DialogContent className="sm:max-w-[500px] bg-background">
                     <DialogHeader>
                         <DialogTitle>Approve Payment</DialogTitle>
+                        <DialogDescription>
+                            Review details before approving.
+                        </DialogDescription>
                     </DialogHeader>
-                    <div className="py-4">
-                        <h4 className="mb-4 text-sm font-medium leading-none">Select Periods to Approve</h4>
-                        <div className="grid gap-2">
-                            {availablePeriods.map((period) => (
-                                <div key={period} className="flex items-center space-x-2">
-                                    <input
-                                        type="checkbox"
-                                        id={period}
-                                        checked={selectedPeriods.includes(period)}
-                                        onChange={() => togglePeriod(period)}
-                                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                                    />
-                                    <label
-                                        htmlFor={period}
-                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                    >
-                                        {period}
-                                    </label>
-                                </div>
-                            ))}
-                            {availablePeriods.length === 0 && (
-                                <p className="text-sm text-muted-foreground">No specific periods listed.</p>
-                            )}
+
+                    {!detailedPayment ? (
+                        <div className="py-8 flex justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="py-4 space-y-4">
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <span className="text-muted-foreground block">Amount</span>
+                                    <span className="font-semibold text-lg">{formatCurrency(detailedPayment.amount)}</span>
+                                </div>
+                                <div>
+                                    <span className="text-muted-foreground block">Method</span>
+                                    <span className="font-medium">{formatPaymentMethod(detailedPayment.method)}</span>
+                                </div>
+                            </div>
+
+                            {/* Allocations Section (Real Data) */}
+                            {detailedPayment.allocations && detailedPayment.allocations.length > 0 && (
+                                <div className="bg-muted/30 p-3 rounded-md border border-border/50">
+                                    <h4 className="flex items-center gap-2 font-medium text-sm mb-2 text-primary">
+                                        <Info className="h-4 w-4" />
+                                        Allocations (Real Impact)
+                                    </h4>
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                        This payment will be applied to the following invoices:
+                                    </p>
+                                    <ul className="space-y-1">
+                                        {detailedPayment.allocations.map(alloc => (
+                                            <li key={alloc.id} className="text-sm flex justify-between">
+                                                <span>Invoice #{alloc.invoice?.number || alloc.invoice_id.slice(0, 8)}</span>
+                                                <span className="font-mono">{formatCurrency(alloc.amount)}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {/* Legacy Periods Section (Info only if allocations exist, or fallback if not) */}
+                            {availablePeriods.length > 0 && (
+                                <div className={`p-3 rounded-md border ${(detailedPayment.allocations?.length || 0) > 0
+                                    ? 'bg-yellow-50/50 border-yellow-200/50 dark:bg-yellow-900/10'
+                                    : 'bg-background'
+                                    }`}>
+                                    <h4 className="font-medium text-sm mb-2 flex items-center justify-between">
+                                        <span>Indicated Periods {(detailedPayment.allocations?.length || 0) > 0 && '(Info Only)'}</span>
+                                    </h4>
+                                    <div className="grid gap-2">
+                                        {availablePeriods.map((period) => (
+                                            <div key={period} className="flex items-center space-x-2">
+                                                {/* If we have Allocations, we probably shouldn't let them edit periods as it's just info 
+                                                     But if backend still relies on legacy, we keep it. 
+                                                     Prompt says: "Mantén la visualización... como referencia visual rápida, pero aclara que es informativa."
+                                                     We keep checkboxes just in case, or maybe read-only if we are sure allocations allow backend to handle it.
+                                                     Let's keep checkboxes but maybe warn.
+                                                  */}
+                                                <input
+                                                    type="checkbox"
+                                                    id={period}
+                                                    checked={selectedPeriods.includes(period)}
+                                                    onChange={() => togglePeriod(period)}
+                                                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                                />
+                                                <label
+                                                    htmlFor={period}
+                                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                                >
+                                                    {period}
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {(!detailedPayment.allocations?.length && availablePeriods.length === 0) && (
+                                <p className="text-sm text-muted-foreground italic">No specific allocation or period info provided.</p>
+                            )}
+
+                        </div>
+                    )}
+
                     <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setApprovalPaymentId(null)}>Cancel</Button>
-                        <Button onClick={handleConfirmApprove}>Confirm Approval</Button>
+                        <Button variant="outline" onClick={() => setApprovalPayment(null)}>Cancel</Button>
+                        <Button onClick={handleConfirmApprove} disabled={!detailedPayment}>Confirm Approval</Button>
                     </div>
                 </DialogContent>
             </Dialog>
