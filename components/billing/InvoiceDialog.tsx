@@ -37,13 +37,19 @@ import type { Unit } from '@/types/models';
 
 const invoiceSchema = z.object({
     unit_id: z.string().min(1, 'Unit is required'),
-    amount: z.coerce.number().positive('Amount must be positive'),
+    amount: z.number().positive('Amount must be positive'),
     period: z.string().regex(/^\d{4}-\d{2}$/, 'Period must be in YYYY-MM format'),
     description: z.string().min(3, 'Description must be at least 3 characters'),
     due_date: z.string().optional(),
 });
 
-type InvoiceFormValues = z.infer<typeof invoiceSchema>;
+type InvoiceFormValues = {
+    unit_id: string;
+    amount: number;
+    period: string;
+    description: string;
+    due_date?: string;
+};
 
 interface InvoiceDialogProps {
     open: boolean;
@@ -162,7 +168,7 @@ export function InvoiceDialog({ open, onOpenChange, onSuccess, initialUnitId }: 
                                             type="number"
                                             step="0.01"
                                             {...field}
-                                            onChange={(e) => field.onChange(e.target.value)}
+                                            onChange={(e) => field.onChange(Number(e.target.value))}
                                         />
                                     </FormControl>
                                     <FormMessage />
