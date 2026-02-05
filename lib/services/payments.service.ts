@@ -5,13 +5,18 @@ export const paymentsService = {
     async getPayments(params?: {
         building_id?: string;
         user_id?: string;
-        unit_id?: string; // Added
+        unit_id?: string;
         status?: string;
         period?: string;
         year?: string;
     }): Promise<Payment[]> {
+        // Swagger defines /payments/admin/payments for listing with filters
         const { data } = await apiClient.get<Payment[]>('/payments/admin/payments', { params });
-        return data;
+        // Ensure amount is number
+        return data.map(p => ({
+            ...p,
+            amount: Number(p.amount)
+        }));
     },
 
     async getPaymentById(id: string): Promise<Payment> {

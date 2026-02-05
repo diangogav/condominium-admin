@@ -1,3 +1,4 @@
+
 import { apiClient } from '@/lib/api/client';
 import type { AuthResponse, LoginCredentials, User } from '@/types/models';
 
@@ -5,32 +6,58 @@ export const authService = {
     async login(credentials: LoginCredentials): Promise<AuthResponse> {
         const { data } = await apiClient.post<AuthResponse>('/auth/login', credentials);
 
+        console.log('Login response data:', data);
+
+        // Handle potential response structure variations
+        // Structure A: { token: { access_token: ... }, user: ... }
+        // Structure B: { access_token: ..., user: ... }
+        const accessToken = data.token?.access_token || (data as any).access_token;
+        const refreshToken = data.token?.refresh_token || (data as any).refresh_token;
+
+        if (!accessToken) {
+            console.error('Login failed: Missing access_token in response', data);
+            throw new Error('Authentication failed: Invalid server response.');
+        }
+
+        // Store tokens immediately
+        localStorage.setItem('access_token', accessToken);
+
+        if (refreshToken) {
+            localStorage.setItem('refresh_token', refreshToken);
+        }
+
+        console.log('Login response user:', data.user);
+
         // Rule: Only users with role: 'admin' or role: 'board' should access the panel.
         const allowedRoles = ['admin', 'board'];
-        if (!allowedRoles.includes(data.user.role)) {
+        // Normalize role to lowercase to handle backend inconsistency
+        const userRole = data.user.role?.toLowerCase() as string;
+
+        if (!allowedRoles.includes(userRole)) {
+            console.error(`Access denied: Role '${data.user.role}' is not allowed.`);
+            // Clean up
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
             throw new Error('Access denied. Only administrators and board members can access this panel.');
         }
 
-        // Rule: Login: Users with PENDING status cannot log in.
+        // Rule: Check status
         if (data.user.status === 'pending') {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
             throw new Error('Your account is pending approval.');
         }
 
         if (data.user.status === 'rejected') {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
             throw new Error('Your account has been rejected.');
         }
 
         if (data.user.status === 'inactive') {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
             throw new Error('Your account is inactive.');
-        }
-
-        // Store tokens
-        localStorage.setItem('access_token', data.token.access_token);
-        // refresh_token is not in the new spec, but keeping it if backend sends it is harmless.
-        // We cast to unknown first to avoid TS error since it's not in the type.
-        const tokenData = data.token as unknown as Record<string, unknown>;
-        if (typeof tokenData.refresh_token === 'string') {
-            localStorage.setItem('refresh_token', tokenData.refresh_token);
         }
 
         return data;

@@ -24,13 +24,13 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { MoreHorizontal, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { MoreHorizontal, Edit, Trash2, CheckCircle, XCircle, Building2 } from 'lucide-react';
 import { UserDialog } from '@/components/users/UserDialog';
 import { formatUserRole } from '@/lib/utils/format';
 import type { User, Building, Unit } from '@/types/models';
 
 export default function UsersPage() {
-    const { isSuperAdmin, user: currentUser } = usePermissions();
+    const { isSuperAdmin, isBoardMember, user: currentUser, buildingId } = usePermissions();
     const [users, setUsers] = useState<User[]>([]);
     const [buildings, setBuildings] = useState<Building[]>([]);
     const [units, setUnits] = useState<Unit[]>([]); // Added units state
@@ -53,8 +53,8 @@ export default function UsersPage() {
             let activeBuildingId = null;
             if (filterBuildingId && filterBuildingId !== 'all') {
                 activeBuildingId = filterBuildingId;
-            } else if (!isSuperAdmin && currentUser?.building_id) {
-                activeBuildingId = currentUser.building_id;
+            } else if (!isSuperAdmin && buildingId) {
+                activeBuildingId = buildingId;
             }
 
             // Build query params
@@ -125,12 +125,15 @@ export default function UsersPage() {
         }
     };
 
-    const getUnitName = (user: User) => {
+    const getUnitNames = (user: User) => {
+        if (user.units && user.units.length > 0) {
+            return user.units.map(u => u.name).join(', ');
+        }
         if (user.unit_id && units.length > 0) {
             const unit = units.find(u => u.id === user.unit_id);
             if (unit) return unit.name;
         }
-        return user.unit; // Fallback to string
+        return user.unit; // Fallback
     };
 
     return (
@@ -165,6 +168,14 @@ export default function UsersPage() {
                                     ))}
                                 </SelectContent>
                             </Select>
+                        </div>
+                    )}
+                    {(isBoardMember && !isSuperAdmin) && (
+                        <div className="w-full md:w-64">
+                            <div className="flex items-center px-3 h-10 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground">
+                                <Building2 className="mr-2 h-4 w-4" />
+                                Building Scoped
+                            </div>
                         </div>
                     )}
                     <div className="w-full md:w-48">
@@ -225,13 +236,13 @@ export default function UsersPage() {
                                     </tr>
                                 ) : (
                                     users.map((user) => {
-                                        const unitName = getUnitName(user);
+                                        const unitName = getUnitNames(user);
                                         return (
                                             <tr key={user.id} className="hover:bg-accent/50 transition-colors">
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="text-sm font-medium text-foreground">{user.name}</div>
                                                     <div className="text-sm text-muted-foreground">{user.email}</div>
-                                                    {unitName && <div className="text-xs text-muted-foreground">Unit: {unitName}</div>}
+                                                    {unitName && <div className="text-xs text-muted-foreground">Units: {unitName}</div>}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <Badge variant="outline">{formatUserRole(user.role)}</Badge>

@@ -26,10 +26,15 @@ export function formatDate(date: string | Date, format = 'MMM dd, yyyy'): string
  * Formats a period string (YYYY-MM) to readable format
  */
 export function formatPeriod(period: string): string {
+    if (!period) return '--';
     try {
-        const [year, month] = period.split('-');
-        const date = new Date(parseInt(year), parseInt(month) - 1);
-        return dateFnsFormat(date, 'MMMM yyyy');
+        const [year, month] = period.split('-').map(Number);
+        if (!year || !month) return period;
+        const date = new Date(year, month - 1);
+        return new Intl.DateTimeFormat('en-US', {
+            month: 'long',
+            year: 'numeric',
+        }).format(date);
     } catch (error) {
         return period;
     }

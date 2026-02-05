@@ -4,11 +4,11 @@ import type { User, UpdateUserDto } from '@/types/models';
 export const usersService = {
     async getUsers(params?: {
         building_id?: string;
+        unit_id?: string;
         role?: string;
         status?: string;
-        unit_id?: string; // Added
     }): Promise<User[]> {
-        const { data } = await apiClient.get<User[]>('/users', { params });
+        const { data } = await apiClient.get<User[]>('/users/', { params });
         return data;
     },
 

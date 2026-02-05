@@ -17,6 +17,7 @@ import {
     FormItem,
     FormLabel,
     FormMessage,
+    FormDescription,
 } from '@/components/ui/form';
 import {
     Select,
@@ -27,9 +28,11 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { usersService } from '@/lib/services/users.service';
-import { unitsService } from '@/lib/services/units.service'; // Added
+import { unitsService } from '@/lib/services/units.service';
 import type { User, Building, Unit } from '@/types/models';
 
 
@@ -44,7 +47,6 @@ interface UserDialogProps {
 export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: UserDialogProps) {
     const [units, setUnits] = useState<Unit[]>([]);
 
-    // Dynamic schema based on user prop
     const schema = z.object({
         name: z.string().min(2, 'Name must be at least 2 characters'),
         email: z.string().email('Invalid email address'),
@@ -52,7 +54,7 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
             ? z.string().optional()
             : z.string().min(6, 'Password is required for new users'),
         phone: z.string().optional(),
-        unit_id: z.string().optional(), // Changed from unit to unit_id
+        unit_ids: z.array(z.string()).optional(), // Changed to array
         building_id: z.string().min(1, 'Building is required'),
         role: z.enum(['resident', 'board', 'admin']),
         status: z.enum(['active', 'pending', 'inactive', 'rejected']),
@@ -67,14 +69,13 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
             email: '',
             password: '',
             phone: '',
-            unit_id: '',
+            unit_ids: [],
             building_id: '',
             role: 'resident',
             status: 'active',
         },
     });
 
-    // Watch building_id to fetch units
     const selectedBuildingId = form.watch('building_id');
 
     useEffect(() => {
@@ -95,29 +96,44 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
         fetchUnits();
     }, [selectedBuildingId]);
 
+    // Reset form when user changes
     useEffect(() => {
         if (user) {
+            // Extract unit IDs from user object
+            let initialUnitIds: string[] = [];
+            if (user.units && user.units.length > 0) {
+                // Handle both UserUnit (unit_id) and raw Unit (id) structures
+                initialUnitIds = user.units.map(u => u.unit_id || (u as any).id).filter(Boolean);
+            } else if (user.unit_id) {
+                initialUnitIds = [user.unit_id];
+            }
+
+            // Robust building ID extraction
+            // Check root, then building object, then first unit's building
+            const buildingId = user.building_id ||
+                user.building?.id ||
+                (user.units && user.units.length > 0 ? user.units[0].building_id : '') ||
+                '';
+
             form.reset({
                 name: user.name,
                 email: user.email,
-                password: '', // Don't fill password on edit
+                password: '',
                 phone: user.phone || '',
-                unit_id: user.unit_id || '', // Use unit_id if available, fallback handled via logic? user.unit_id is strict now
-                building_id: user.building_id || '',
+                unit_ids: initialUnitIds,
+                building_id: buildingId,
                 role: user.role,
                 status: user.status || 'active',
             });
-            // Ideally if user has unit_id, we fetch units for that building so the dropdown is populated
-            // The useEffect on selectedBuildingId will handle fetching units when form resets building_id
         } else {
             form.reset({
                 name: '',
                 email: '',
                 password: '',
                 phone: '',
-                unit_id: '',
+                unit_ids: [],
                 building_id: '',
-                role: 'resident', // Default to resident, user can change to board
+                role: 'resident',
                 status: 'active',
             });
         }
@@ -125,27 +141,24 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
 
     const onSubmit = async (data: UserFormData) => {
         try {
-            // Find selected unit name to optionally send it too? 
-            // The DTO now supports unit_id. The backend should handle the relation.
-            // If backend strictly needs unit name for legacy, we might need to send it.
-            // Let's assume we send unit_id and backend updates relation.
-
-            // Map unit_id to unit name if we need to support legacy field or if API expects it
-            const selectedUnitIdx = units.find(u => u.id === data.unit_id);
+            // Data transformation
             const payload = {
                 ...data,
-                unit: selectedUnitIdx?.name, // Send name for legacy/display compatibility
+                // We send unit_ids. 
+                // Legacy 'unit' name string support: join names of selected units
+                unit: units
+                    .filter(u => data.unit_ids?.includes(u.id))
+                    .map(u => u.name)
+                    .join(', '),
             };
 
             if (user) {
-                // Update
                 const updateData: any = { ...payload };
-                if (!updateData.password) delete updateData.password; // Remove empty password if not changing
+                if (!updateData.password) delete updateData.password;
 
                 await usersService.updateUser(user.id, updateData);
                 toast.success('User updated successfully');
             } else {
-                // Create
                 if (!data.password) {
                     form.setError('password', { message: 'Password is required' });
                     return;
@@ -166,7 +179,7 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{user ? 'Edit User' : 'Create User'}</DialogTitle>
                     <DialogDescription>
@@ -228,61 +241,93 @@ export function UserDialog({ open, onOpenChange, user, buildings, onSuccess }: U
                                 </FormItem>
                             )}
                         />
-                        <div className="grid grid-cols-2 gap-4">
-                            <FormField
-                                control={form.control}
-                                name="building_id"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Building</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                                            <FormControl>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Select building" />
-                                                </SelectTrigger>
-                                            </FormControl>
-                                            <SelectContent>
-                                                {buildings.map((b) => (
-                                                    <SelectItem key={b.id} value={b.id}>
-                                                        {b.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={form.control}
-                                name="unit_id"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Unit</FormLabel>
-                                        <Select
-                                            onValueChange={field.onChange}
-                                            defaultValue={field.value}
-                                            value={field.value}
-                                            disabled={!selectedBuildingId || units.length === 0}
-                                        >
-                                            <FormControl>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder={selectedBuildingId ? (units.length === 0 ? "Loading..." : "Select unit") : "Select building first"} />
-                                                </SelectTrigger>
-                                            </FormControl>
-                                            <SelectContent>
-                                                {units.map((u) => (
-                                                    <SelectItem key={u.id} value={u.id}>
-                                                        {u.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                        </div>
+
+                        <FormField
+                            control={form.control}
+                            name="building_id"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Building</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select building" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            {buildings.map((b) => (
+                                                <SelectItem key={b.id} value={b.id}>
+                                                    {b.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <FormField
+                            control={form.control}
+                            name="unit_ids"
+                            render={() => (
+                                <FormItem>
+                                    <div className="mb-4">
+                                        <FormLabel className="text-base">Units</FormLabel>
+                                        <FormDescription>
+                                            Select all units owned/occupied by this user.
+                                        </FormDescription>
+                                    </div>
+                                    <div className="border rounded-md p-4">
+                                        {!selectedBuildingId ? (
+                                            <p className="text-sm text-muted-foreground text-center">Select a building first</p>
+                                        ) : units.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground text-center">Loading units...</p>
+                                        ) : (
+                                            <ScrollArea className="h-[150px]">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {units.map((unit) => (
+                                                        <FormField
+                                                            key={unit.id}
+                                                            control={form.control}
+                                                            name="unit_ids"
+                                                            render={({ field }) => {
+                                                                return (
+                                                                    <FormItem
+                                                                        key={unit.id}
+                                                                        className="flex flex-row items-start space-x-3 space-y-0"
+                                                                    >
+                                                                        <FormControl>
+                                                                            <Checkbox
+                                                                                checked={field.value?.includes(unit.id)}
+                                                                                onCheckedChange={(checked: boolean | 'indeterminate') => {
+                                                                                    return checked === true
+                                                                                        ? field.onChange([...(field.value || []), unit.id])
+                                                                                        : field.onChange(
+                                                                                            field.value?.filter(
+                                                                                                (value) => value !== unit.id
+                                                                                            )
+                                                                                        )
+                                                                                }}
+                                                                            />
+                                                                        </FormControl>
+                                                                        <FormLabel className="font-normal cursor-pointer">
+                                                                            {unit.name}
+                                                                        </FormLabel>
+                                                                    </FormItem>
+                                                                )
+                                                            }}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </ScrollArea>
+                                        )}
+                                    </div>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
                         <div className="grid grid-cols-2 gap-4">
                             <FormField
                                 control={form.control}
