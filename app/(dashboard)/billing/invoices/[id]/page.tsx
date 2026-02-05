@@ -75,9 +75,9 @@ export default function InvoiceDetailPage({ params }: InvoiceDetailPageProps) {
     const isPaid = invoice.status === 'PAID';
 
     // Fallback for period display
-    const periodDisplay = invoice.period
-        ? formatPeriod(invoice.period)
-        : (invoice.year && invoice.month ? `${invoice.month}/${invoice.year}` : '--');
+    const periodDisplay = (invoice.year && invoice.month)
+        ? formatPeriod(`${invoice.year}-${String(invoice.month).padStart(2, '0')}`)
+        : '--';
 
     // Fallback for Title
     const title = invoice.number ? `Invoice #${invoice.number}` : `Invoice ${periodDisplay}`;
