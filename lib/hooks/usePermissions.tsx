@@ -1,29 +1,30 @@
 'use client';
 
+import { useBuildingContext } from '../contexts/BuildingContext';
 import { useAuth } from './useAuth';
 
 export function usePermissions() {
     const { user } = useAuth();
+    const { selectedBuildingId, availableBuildings } = useBuildingContext();
 
     const isSuperAdmin = user?.role === 'admin';
 
     // Get all buildings where user has board role
     const getBoardBuildings = (): string[] => {
         if (isSuperAdmin) return []; // Admin doesn't need filtering
-
-        return user?.units
-            ?.filter(unit => unit.building_role === 'board')
-            .map(unit => unit.building_id)
-            .filter(Boolean) as string[] ?? [];
+        return availableBuildings.map(b => b.id);
     };
 
     // Check if user is board in specific building
-    const isBoardInBuilding = (buildingId?: string): boolean => {
+    const isBoardInBuilding = (id?: string): boolean => {
         if (isSuperAdmin) return true;
-        if (!buildingId) return false;
+
+        // If no ID provided, check current selected building
+        const checkId = id || selectedBuildingId;
+        if (!checkId) return false;
 
         return user?.units?.some(
-            unit => unit.building_id === buildingId && unit.building_role === 'board'
+            (unit: any) => unit.building_id === checkId && unit.building_role === 'board'
         ) ?? false;
     };
 
@@ -31,14 +32,14 @@ export function usePermissions() {
     const isBoardMember = user?.role === 'board';
     const isResident = user?.role === 'resident';
 
-    // Legacy building ID (for backward compatibility)
-    const buildingId = user?.building_id ||
-        user?.building?.id ||
-        (user?.units && user?.units.length > 0 ? user.units[0].building_id : undefined);
+    // Current Building ID from Context or Fallback
+    const buildingId = isSuperAdmin ? undefined : (selectedBuildingId || user?.building_id);
 
-    const buildingName = user?.building_name ||
-        user?.building?.name ||
-        (user?.units && user?.units.length > 0 ? user.units[0].building_name : undefined);
+    // Get Building Name from available buildings or user
+    const selectedBuilding = availableBuildings.find(b => b.id === buildingId);
+    const buildingName = selectedBuilding?.name ||
+        user?.building_name ||
+        user?.building?.name;
 
     // Building-aware permissions
     const canManageBuilding = (buildingId?: string) => {

@@ -17,6 +17,14 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { useState } from 'react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { useBuildingContext } from '@/lib/contexts/BuildingContext';
 
 const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['admin', 'board'] },
@@ -29,7 +37,8 @@ const navigation = [
 export function Sidebar() {
     const pathname = usePathname();
     const { logout } = useAuth();
-    const { user, isSuperAdmin, isBoardMember, buildingId, buildingName, displayName } = usePermissions();
+    const { user, isSuperAdmin, isBoardMember, displayName } = usePermissions();
+    const { selectedBuildingId, setSelectedBuildingId, availableBuildings } = useBuildingContext();
     const [open, setOpen] = useState(false);
 
     // Filter navigation based on user role
@@ -48,13 +57,34 @@ export function Sidebar() {
                         Condominio
                     </span>
                 </div>
-                {isBoardMember && buildingName && (
+
+                {/* Building Selector for Board Members */}
+                {isBoardMember && !isSuperAdmin && availableBuildings.length > 0 && (
                     <div className="px-2 mb-8">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
-                            {buildingName}
-                        </p>
+                        {availableBuildings.length > 1 ? (
+                            <Select
+                                value={selectedBuildingId || ''}
+                                onValueChange={setSelectedBuildingId}
+                            >
+                                <SelectTrigger className="w-full bg-background/50 border-white/10 text-xs font-medium uppercase tracking-wider h-8">
+                                    <SelectValue placeholder="Select Building" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {availableBuildings.map(building => (
+                                        <SelectItem key={building.id} value={building.id}>
+                                            {building.name || 'Unknown Building'}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        ) : (
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
+                                {availableBuildings[0].name || 'Unknown Building'}
+                            </p>
+                        )}
                     </div>
                 )}
+
                 <nav className="space-y-1">
                     {filteredNavigation.map((item) => {
                         const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
