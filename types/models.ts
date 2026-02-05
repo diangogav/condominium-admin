@@ -1,22 +1,37 @@
 export type PaymentMethod = 'PAGO_MOVIL' | 'TRANSFER' | 'CASH';
 export type PaymentStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type InvoiceStatus = 'PENDING' | 'PAID' | 'CANCELLED'; // Simplified status
 export type UserRole = 'resident' | 'board' | 'admin';
-export type UserStatus = 'pending' | 'active' | 'inactive' | 'rejected'; // Updated status list
+export type UserStatus = 'pending' | 'active' | 'inactive' | 'rejected';
+
+export interface UserUnit {
+    unit_id: string;
+    building_id: string;
+    role: 'owner' | 'resident';
+    is_primary: boolean;
+    // Helper fields for UI (might be enriched by frontend)
+    name?: string;
+    building_name?: string;
+}
 
 export interface User {
     id: string;
     email: string;
     name: string;
-    phone?: string;
-    unit?: string;     // Keeping for backward compatibility or display name
-    unit_id?: string;  // [NEW] UUID link
-    building_id?: string;
-    building?: Building;
-    building_name?: string;
+    phone?: string | null;
+    // Deprecating single unit_id/unit checks
+    unit?: string;
+    unit_id?: string;
+    // New Swagger structure
+    units?: UserUnit[];
     role: UserRole;
     status?: UserStatus;
     created_at: string;
     updated_at: string;
+    // Legacy/Optional fields from older versions or specific endpoints
+    building_id?: string;
+    building?: Building;
+    building_name?: string;
 }
 
 export interface Building {
@@ -29,6 +44,35 @@ export interface Building {
     created_at?: string;
 }
 
+export interface Invoice {
+    id: string;
+    number: string;
+    amount: number;
+    paid_amount: number;
+    status: InvoiceStatus;
+    issue_date: string;
+    due_date: string;
+    description?: string;
+    month: number;
+    year: number;
+    user_id: string;
+    user?: User;
+    unit_id: string;
+    unit?: Unit;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface Allocation {
+    id: string;
+    payment_id: string;
+    invoice_id: string;
+    invoice?: Invoice;
+    amount: number;
+    created_at: string;
+    payment?: Payment; // [NEW] Added for bidirectional navigation
+}
+
 export interface Payment {
     id: string;
     user_id: string;
@@ -38,14 +82,21 @@ export interface Payment {
     method: PaymentMethod;
     reference?: string;
     bank?: string;       // Added bank field
-    periods?: string[];  // Added periods array
+    periods?: string[];  // Deprecated: Info only
     period?: string;     // Legacy support
+    allocations?: Allocation[]; // [NEW] Real accounting
     proof_url?: string;  // Full URL from backend
     status: PaymentStatus;
     notes?: string;      // Rejection reason or notes
     unit_id?: string;    // [NEW] UUID link
     created_at: string;
     updated_at: string;
+}
+
+export interface InvoicePayment extends Payment {
+    allocated_amount: number;
+    allocation_id: string;
+    allocated_at: string;
 }
 
 export interface DashboardStats {
@@ -60,7 +111,8 @@ export interface DashboardStats {
 export interface AuthResponse {
     token: {
         access_token: string;
-        // refresh_token?: string; // Prompt only mentions access_token
+        refresh_token: string;
+        expires_in: number;
     };
     user: User;
 }
@@ -124,4 +176,28 @@ export interface CreateUnitDto {
 export interface BatchUnitDto {
     floors: string[];
     unitsPerFloor: string[];
+}
+
+export interface BillingDebtPayload {
+    unit_id: string;
+    amount: number;
+    period: string; // "YYYY-MM"
+    description: string;
+    due_date?: string;
+}
+
+export interface UnitInvoice {
+    invoiceId: string;
+    amount: number;
+    paid: number;
+    remaining: number;
+    period: string;
+    status: string;
+}
+
+export interface UnitBalance {
+    unit: string; // Unit name?
+    totalDebt: number;
+    pendingInvoices: number;
+    details: UnitInvoice[];
 }
