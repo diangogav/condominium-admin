@@ -22,29 +22,26 @@ import {
     DialogTitle,
     DialogDescription,
 } from '@/components/ui/dialog';
-import type { Payment, Building, Unit } from '@/types/models';
+import type { Payment, Unit } from '@/types/models';
 import { formatCurrency, formatDate, formatPaymentMethod } from '@/lib/utils/format';
 import { toast } from 'sonner';
 import { usePermissions } from '@/lib/hooks/usePermissions';
-import { Eye, CheckCircle, XCircle, Info, Building2, Home, DollarSign } from 'lucide-react';
-import { SearchableSelect } from '@/components/ui/searchable-select';
+import { Eye, CheckCircle, XCircle, Info, Home, DollarSign } from 'lucide-react';
 import { PaymentDialog } from '@/components/payments/PaymentDialog';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import Image from 'next/image';
+import { useParams } from 'next/navigation';
 
-import { useSearchParams } from 'next/navigation';
-
-export default function PaymentsPage() {
-    const { isSuperAdmin, isBoardMember, user, buildingId } = usePermissions();
-    const searchParams = useSearchParams();
-    const userIdParam = searchParams.get('user_id');
+export default function BuildingPaymentsPage() {
+    const { isSuperAdmin, isBoardMember, user } = usePermissions();
+    const params = useParams();
+    const buildingId = params.id as string;
 
     const [payments, setPayments] = useState<Payment[]>([]);
-    const [buildings, setBuildings] = useState<Building[]>([]);
     const [units, setUnits] = useState<Unit[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     // Filters
-    const [filterBuildingId, setFilterBuildingId] = useState<string>('all');
     const [filterUnitId, setFilterUnitId] = useState<string>('all');
     const [filterStatus, setFilterStatus] = useState<string>('all');
     const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString());
@@ -57,11 +54,6 @@ export default function PaymentsPage() {
     const [approvalPayment, setApprovalPayment] = useState<Payment | null>(null);
     const [availablePeriods, setAvailablePeriods] = useState<string[]>([]);
     const [selectedPeriods, setSelectedPeriods] = useState<string[]>([]);
-
-    // Allocations for approval preview (if backend provides them on GET or if we simulate)
-    // Actually backend prompt says: "Al revisar un pago (GET /payments/:id), verás... allocations (Real)"
-    // So we don't need to fetch extra, just use the payment object or fetch detailed if list doesn't have it.
-    // The list GET usually returns light objects. Let's fetch detail on open.
     const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
     const [detailedPayment, setDetailedPayment] = useState<Payment | null>(null);
 
@@ -70,49 +62,21 @@ export default function PaymentsPage() {
         try {
             setIsLoading(true);
 
-            // Determine building ID
-            let activeBuildingId = undefined;
-            if (isSuperAdmin) {
-                if (filterBuildingId && filterBuildingId !== 'all') {
-                    activeBuildingId = filterBuildingId;
-                }
-            } else {
-                activeBuildingId = buildingId;
-            }
+            const query: Record<string, string> = {
+                building_id: buildingId,
+                year: filterYear
+            };
 
-            const query: Record<string, string> = {};
-            if (userIdParam) {
-                query.user_id = userIdParam;
-                if (filterYear) query.year = filterYear;
-            } else {
-                if (activeBuildingId) query.building_id = activeBuildingId;
-                if (filterUnitId && filterUnitId !== 'all') query.unit_id = filterUnitId;
-                if (filterYear) query.year = filterYear;
-            }
-
+            if (filterUnitId && filterUnitId !== 'all') query.unit_id = filterUnitId;
             if (filterStatus && filterStatus !== 'all') query.status = filterStatus;
             if (filterPeriod) query.period = filterPeriod;
 
-            const promises: Promise<any>[] = [
+            const [paymentsData, unitsData] = await Promise.all([
                 paymentsService.getPayments(query),
-                isSuperAdmin ? buildingsService.getBuildings() : Promise.resolve([])
-            ];
+                unitsService.getUnits(buildingId)
+            ]);
 
-            if (activeBuildingId) {
-                promises.push(unitsService.getUnits(activeBuildingId));
-            } else {
-                promises.push(Promise.resolve([]));
-            }
-
-            const [paymentsData, buildingsData, unitsData] = await Promise.all(promises);
-
-            let filteredPayments = paymentsData;
-            if (userIdParam) {
-                filteredPayments = paymentsData.filter((p: Payment) => p.user_id === userIdParam);
-            }
-
-            setPayments(filteredPayments);
-            setBuildings(buildingsData);
+            setPayments(paymentsData);
             setUnits(unitsData);
         } catch (error) {
             console.error('Failed to fetch data:', error);
@@ -120,7 +84,7 @@ export default function PaymentsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [isSuperAdmin, user, filterBuildingId, filterUnitId, filterStatus, filterPeriod, filterYear, userIdParam]);
+    }, [buildingId, filterUnitId, filterStatus, filterPeriod, filterYear]);
 
     useEffect(() => {
         fetchData();
@@ -128,14 +92,11 @@ export default function PaymentsPage() {
 
     const openApprovalDialog = async (payment: Payment) => {
         setApprovalPayment(payment);
-        setDetailedPayment(null); // Reset
+        setDetailedPayment(null);
 
         try {
-            // Fetch detailed payment to get allocations
             const detailed = await paymentsService.getPaymentById(payment.id);
             setDetailedPayment(detailed);
-
-            // Legacy periods support
             const periods = detailed.periods || (detailed.period ? [detailed.period] : []);
             setAvailablePeriods(periods);
             setSelectedPeriods(periods);
@@ -158,7 +119,6 @@ export default function PaymentsPage() {
         if (!approvalPayment) return;
 
         try {
-            // We pass selected periods if legacy support needs it, otherwise backend uses allocations logic
             const isSubset = selectedPeriods.length < availablePeriods.length;
             const periodsToSend = isSubset ? selectedPeriods : undefined;
 
@@ -190,44 +150,19 @@ export default function PaymentsPage() {
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-foreground">Payments</h1>
-                    <p className="text-muted-foreground mt-1">Manage and review payments</p>
+                    <h1 className="text-3xl font-bold text-foreground font-display tracking-tight text-white">Payments</h1>
+                    <p className="text-muted-foreground mt-1">Review and manage payments for this building</p>
                 </div>
-                <Button onClick={() => setIsPaymentDialogOpen(true)} className="gap-2">
+                <Button onClick={() => setIsPaymentDialogOpen(true)} className="gap-2 bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 transition-all">
                     <DollarSign className="h-4 w-4" />
                     Register Payment
                 </Button>
             </div>
 
             {/* Filters */}
-            <Card className="p-4 border-border/50 bg-card">
+            <Card className="p-4 border-white/5 bg-card/50 backdrop-blur-xl">
                 <div className="flex flex-wrap gap-4">
-                    {isSuperAdmin && (
-                        <div className="w-full md:w-64">
-                            <Select value={filterBuildingId} onValueChange={setFilterBuildingId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="All Buildings" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Buildings</SelectItem>
-                                    {buildings.map((b) => (
-                                        <SelectItem key={b.id} value={b.id}>
-                                            {b.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
-                    {(isBoardMember && !isSuperAdmin) && (
-                        <div className="w-full md:w-64">
-                            <div className="flex items-center px-3 h-10 rounded-md border border-input bg-muted/50 text-sm text-muted-foreground">
-                                <Building2 className="mr-2 h-4 w-4" />
-                                Building Scoped
-                            </div>
-                        </div>
-                    )}
-                    <div className="w-full md:w-56">
+                    <div className="w-full md:w-64">
                         <SearchableSelect
                             options={[
                                 { value: 'all', label: 'All Units' },
@@ -241,13 +176,12 @@ export default function PaymentsPage() {
                             onValueChange={setFilterUnitId}
                             placeholder="All Units"
                             searchPlaceholder="Search unit..."
-                            disabled={!isSuperAdmin && !buildingId && filterBuildingId === 'all'}
                             triggerIcon={Home}
                         />
                     </div>
                     <div className="w-full md:w-48">
                         <Select value={filterStatus} onValueChange={setFilterStatus}>
-                            <SelectTrigger>
+                            <SelectTrigger className="bg-background/50 border-white/5">
                                 <SelectValue placeholder="All Statuses" />
                             </SelectTrigger>
                             <SelectContent>
@@ -260,7 +194,7 @@ export default function PaymentsPage() {
                     </div>
                     <div className="w-full md:w-32">
                         <Select value={filterYear} onValueChange={setFilterYear}>
-                            <SelectTrigger>
+                            <SelectTrigger className="bg-background/50 border-white/5">
                                 <SelectValue placeholder="Year" />
                             </SelectTrigger>
                             <SelectContent>
@@ -274,44 +208,49 @@ export default function PaymentsPage() {
                             placeholder="Period (e.g. 2024-01)"
                             value={filterPeriod}
                             onChange={(e) => setFilterPeriod(e.target.value)}
+                            className="bg-background/50 border-white/5"
                         />
                     </div>
                 </div>
             </Card>
 
-            <Card className="border-border/50 bg-card">
+            <Card className="border-white/5 bg-card/50 backdrop-blur-xl overflow-hidden shadow-2xl">
                 <CardContent className="p-0">
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-muted/50 border-b border-border/50">
+                            <thead className="bg-white/5 border-b border-white/5">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Date</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">User</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Amount</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Periods (Info)</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Ref</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Proof</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">User / Unit</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Amount</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ref / Method</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Proof</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-border/50 bg-card">
+                            <tbody className="divide-y divide-white/5">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">Loading payments...</td>
+                                        <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                                                <span>Loading payments...</span>
+                                            </div>
+                                        </td>
                                     </tr>
                                 ) : payments.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No payments found.</td>
+                                        <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">No payments found.</td>
                                     </tr>
                                 ) : (
                                     payments.map((payment) => (
-                                        <tr key={payment.id} className="hover:bg-accent/50 transition-colors">
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                                        <tr key={payment.id} className="hover:bg-white/5 transition-colors group">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground tabular-nums">
                                                 {formatDate(payment.payment_date)}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                                                {payment.user?.name || 'Unknown'} <br />
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                                <div className="font-semibold text-white">{payment.user?.name || 'Unknown'}</div>
                                                 <span className="text-xs text-muted-foreground">
                                                     {(() => {
                                                         const unitId = payment.unit_id || payment.user?.unit_id;
@@ -320,42 +259,38 @@ export default function PaymentsPage() {
                                                     })()}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-white tabular-nums">
                                                 {formatCurrency(payment.amount)}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                                                {payment.periods ? payment.periods.join(', ') : (payment.period || '-')}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                                                {formatPaymentMethod(payment.method)} <br />
+                                                <div className="text-white font-medium">{formatPaymentMethod(payment.method)}</div>
                                                 <span className="text-xs">{payment.reference}</span>
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
                                                 {payment.proof_url ? (
-                                                    <Button variant="ghost" size="sm" onClick={() => setProofUrl(payment.proof_url!)}>
-                                                        <Eye className="h-4 w-4 mr-1" /> View
+                                                    <Button variant="ghost" size="sm" onClick={() => setProofUrl(payment.proof_url!)} className="hover:bg-primary/20 hover:text-primary">
+                                                        <Eye className="h-4 w-4 mr-2" /> View
                                                     </Button>
-                                                ) : '-'}
+                                                ) : <span className="text-muted-foreground text-xs italic">No proof</span>}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <Badge
                                                     className={
-                                                        payment.status === 'APPROVED' ? 'bg-green-500 hover:bg-green-600' :
-                                                            payment.status === 'PENDING' ? 'bg-yellow-500 hover:bg-yellow-600 text-white' :
-                                                                'bg-red-500 hover:bg-red-600'
+                                                        payment.status === 'APPROVED' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                                                            payment.status === 'PENDING' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                                                                'bg-red-500/20 text-red-400 border-red-500/30'
                                                     }
                                                 >
                                                     {payment.status}
                                                 </Badge>
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                {payment.status === 'PENDING' && (
-                                                    <div className="flex gap-2">
+                                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                                                {payment.status === 'PENDING' ? (
+                                                    <div className="flex justify-end gap-2">
                                                         <Button
                                                             size="sm"
                                                             onClick={() => openApprovalDialog(payment)}
-                                                            className="bg-green-600 hover:bg-green-700 text-white h-8 w-8 p-0"
-                                                            title="Approve"
+                                                            className="bg-green-600 hover:bg-green-500 text-white h-8 w-8 p-0 rounded-lg shadow-lg shadow-green-600/20"
                                                         >
                                                             <CheckCircle className="h-4 w-4" />
                                                         </Button>
@@ -363,12 +298,15 @@ export default function PaymentsPage() {
                                                             size="sm"
                                                             variant="destructive"
                                                             onClick={() => handleReject(payment.id)}
-                                                            className="h-8 w-8 p-0"
-                                                            title="Reject"
+                                                            className="h-8 w-8 p-0 rounded-lg shadow-lg shadow-red-600/20"
                                                         >
                                                             <XCircle className="h-4 w-4" />
                                                         </Button>
                                                     </div>
+                                                ) : (
+                                                    <Button variant="ghost" size="sm" onClick={() => openApprovalDialog(payment)} className="h-8 w-8 p-0">
+                                                        <Info className="h-4 w-4 text-muted-foreground" />
+                                                    </Button>
                                                 )}
                                             </td>
                                         </tr>
@@ -382,12 +320,12 @@ export default function PaymentsPage() {
 
             {/* Proof Dialog */}
             <Dialog open={!!proofUrl} onOpenChange={(open) => !open && setProofUrl(null)}>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="max-w-3xl bg-card border-white/10 backdrop-blur-2xl">
                     <DialogHeader>
-                        <DialogTitle>Payment Proof</DialogTitle>
+                        <DialogTitle className="text-white">Payment Proof</DialogTitle>
                     </DialogHeader>
                     {proofUrl && (
-                        <div className="relative w-full h-[600px]">
+                        <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border border-white/5 shadow-2xl">
                             <Image
                                 src={proofUrl}
                                 alt="Payment Proof"
@@ -402,81 +340,65 @@ export default function PaymentsPage() {
 
             {/* Approval Dialog */}
             <Dialog open={!!approvalPayment} onOpenChange={(open) => !open && setApprovalPayment(null)}>
-                <DialogContent className="sm:max-w-[500px] bg-background">
+                <DialogContent className="sm:max-w-[500px] bg-card border-white/10 backdrop-blur-2xl shadow-2xl">
                     <DialogHeader>
-                        <DialogTitle>Approve Payment</DialogTitle>
-                        <DialogDescription>
-                            Review details before approving.
+                        <DialogTitle className="text-white">Review Payment</DialogTitle>
+                        <DialogDescription className="text-muted-foreground">
+                            Verify the details and allocations before approving.
                         </DialogDescription>
                     </DialogHeader>
 
                     {!detailedPayment ? (
-                        <div className="py-8 flex justify-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                        <div className="py-12 flex justify-center">
+                            <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
                         </div>
                     ) : (
-                        <div className="py-4 space-y-4">
-                            <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="py-4 space-y-6">
+                            <div className="grid grid-cols-2 gap-6 p-4 rounded-xl bg-white/5 border border-white/5">
                                 <div>
-                                    <span className="text-muted-foreground block">Amount</span>
-                                    <span className="font-semibold text-lg">{formatCurrency(detailedPayment.amount)}</span>
+                                    <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider block mb-1">Amount</span>
+                                    <span className="text-2xl font-black text-white">{formatCurrency(detailedPayment.amount)}</span>
                                 </div>
                                 <div>
-                                    <span className="text-muted-foreground block">Method</span>
-                                    <span className="font-medium">{formatPaymentMethod(detailedPayment.method)}</span>
+                                    <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider block mb-1">Method</span>
+                                    <span className="text-lg font-semibold text-white">{formatPaymentMethod(detailedPayment.method)}</span>
                                 </div>
                             </div>
 
-                            {/* Allocations Section (Real Data) */}
                             {detailedPayment.allocations && detailedPayment.allocations.length > 0 && (
-                                <div className="bg-muted/30 p-3 rounded-md border border-border/50">
-                                    <h4 className="flex items-center gap-2 font-medium text-sm mb-2 text-primary">
+                                <div className="space-y-3">
+                                    <h4 className="flex items-center gap-2 font-bold text-sm text-primary uppercase tracking-wide">
                                         <Info className="h-4 w-4" />
-                                        Allocations (Real Impact)
+                                        Impacted Invoices
                                     </h4>
-                                    <p className="text-xs text-muted-foreground mb-2">
-                                        This payment will be applied to the following invoices:
-                                    </p>
-                                    <ul className="space-y-1">
+                                    <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                                         {detailedPayment.allocations.map(alloc => (
-                                            <li key={alloc.id} className="text-sm flex justify-between">
-                                                <span>Invoice #{alloc.invoice?.number || alloc.invoice_id.slice(0, 8)}</span>
-                                                <span className="font-mono">{formatCurrency(alloc.amount)}</span>
-                                            </li>
+                                            <div key={alloc.id} className="flex justify-between items-center p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                                                <span className="text-sm font-medium text-white">Invoice #{alloc.invoice?.number || alloc.invoice_id.slice(0, 8)}</span>
+                                                <span className="font-bold text-primary">{formatCurrency(alloc.amount)}</span>
+                                            </div>
                                         ))}
-                                    </ul>
+                                    </div>
                                 </div>
                             )}
 
-                            {/* Legacy Periods Section (Info only if allocations exist, or fallback if not) */}
                             {availablePeriods.length > 0 && (
-                                <div className={`p-3 rounded-md border ${(detailedPayment.allocations?.length || 0) > 0
-                                    ? 'bg-yellow-50/50 border-yellow-200/50 dark:bg-yellow-900/10'
-                                    : 'bg-background'
-                                    }`}>
-                                    <h4 className="font-medium text-sm mb-2 flex items-center justify-between">
-                                        <span>Indicated Periods {(detailedPayment.allocations?.length || 0) > 0 && '(Info Only)'}</span>
+                                <div className="space-y-3 p-4 rounded-xl bg-primary/5 border border-primary/10">
+                                    <h4 className="font-bold text-sm text-white flex items-center justify-between">
+                                        <span>Indicated Periods</span>
+                                        <Badge variant="outline" className="text-[10px] uppercase border-primary/20 text-primary">Informative</Badge>
                                     </h4>
-                                    <div className="grid gap-2">
+                                    <div className="grid grid-cols-2 gap-2">
                                         {availablePeriods.map((period) => (
-                                            <div key={period} className="flex items-center space-x-2">
-                                                {/* If we have Allocations, we probably shouldn't let them edit periods as it's just info 
-                                                     But if backend still relies on legacy, we keep it. 
-                                                     Prompt says: "Mantén la visualización... como referencia visual rápida, pero aclara que es informativa."
-                                                     We keep checkboxes just in case, or maybe read-only if we are sure allocations allow backend to handle it.
-                                                     Let's keep checkboxes but maybe warn.
-                                                  */}
+                                            <div key={period} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors">
                                                 <input
                                                     type="checkbox"
                                                     id={period}
                                                     checked={selectedPeriods.includes(period)}
                                                     onChange={() => togglePeriod(period)}
-                                                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                                    className="w-4 h-4 rounded border-white/10 bg-black/20 text-primary focus:ring-primary/20 cursor-pointer"
                                                 />
-                                                <label
-                                                    htmlFor={period}
-                                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                                >
+                                                <label htmlFor={period} className="text-sm font-medium text-white cursor-pointer select-none">
                                                     {period}
                                                 </label>
                                             </div>
@@ -484,17 +406,16 @@ export default function PaymentsPage() {
                                     </div>
                                 </div>
                             )}
-
-                            {(!detailedPayment.allocations?.length && availablePeriods.length === 0) && (
-                                <p className="text-sm text-muted-foreground italic">No specific allocation or period info provided.</p>
-                            )}
-
                         </div>
                     )}
 
-                    <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setApprovalPayment(null)}>Cancel</Button>
-                        <Button onClick={handleConfirmApprove} disabled={!detailedPayment}>Confirm Approval</Button>
+                    <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
+                        <Button variant="ghost" onClick={() => setApprovalPayment(null)} className="text-muted-foreground hover:text-white">Cancel</Button>
+                        {detailedPayment?.status === 'PENDING' && (
+                            <Button onClick={handleConfirmApprove} disabled={!detailedPayment} className="shadow-lg shadow-primary/20 px-8">
+                                Approve Payment
+                            </Button>
+                        )}
                     </div>
                 </DialogContent>
             </Dialog>
@@ -502,7 +423,6 @@ export default function PaymentsPage() {
                 open={isPaymentDialogOpen}
                 onOpenChange={setIsPaymentDialogOpen}
                 buildingId={buildingId}
-                buildings={buildings}
                 onSuccess={fetchData}
             />
         </div>
